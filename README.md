@@ -1,39 +1,54 @@
-# Soccer Analytics - Capstone Project
+# Soccer Analytics
 
-Aniket Giriyalkar (aag5405@rit.edu)
+Soccer Analytics is a World Cup modeling and visualization capstone focused on
+expected goals, player comparison, and position-based analysis. The notebooks in
+this repository show the full workflow from data prep through modeling and final
+visuals.
 
-## Content
-open-data : Data Source<br />
-2018WC-xGModel-Create a preprocessed Pickle file.ipynb<br />
-2018WC-xGModel-Data Exploration.ipynb<br />
-2018WC-xGModel-Model Selection.ipynb<br />
-2018WC-xGModel-Model Application.ipynb<br />
-Best Players for each position-avg of top10 features for that position.ipynb<br />
-Best Players for each position-weighted average.ipynb<br />
-WC2018-Player Comparision Visualizations.ipynb<br />
-xGModel-version1.ipynb <br />
+## Quick start
 
+1. Open the repository in Jupyter Notebook or JupyterLab.
+2. Point the notebooks to the local `open-data` folder.
+3. Run the data-preparation notebooks first, then the exploration and modeling
+   notebooks, and finally the comparison notebooks.
 
-## How to Run
-Make of local copy of the folder open-data and set the file path and event path appropriately.<br />
-Once that is done simply running each of the .ipynb files should be enough. As of now, these files consist of the latest results. <br />
+## What’s in the repo
 
-## How to Use
+- `open-data/` contains the project data source.
+- `2018WC-xGModel-Create a preprocessed Pickle file.ipynb` prepares the data.
+- `2018WC-xGModel-Data Exploration.ipynb` explores the dataset.
+- `2018WC-xGModel-Model Selection.ipynb` compares model options.
+- `2018WC-xGModel-Model Application.ipynb` explores how the model behaves.
+- `Best Players for each position-avg of top10 features for that position.ipynb`
+  and `Best Players for each position-weighted average.ipynb` support player
+  ranking and best-XI analysis.
+- `WC2018-Player Comparision Visualizations.ipynb` holds the visuals used for
+  the report and poster.
 
-- For comparision of Best XI and World Cup XI:
-<br />To observe the results for my Best XI and to view the code  for how I evaluated my best XI, open the file Best Players for each position-avg of top10 features for that position.ipynb. This was a more fair way to evaluate than using weighted average method for each position.
-<br /> The implementation of weighted average method can be observed in the file Best Players for each position-weighted average.ipynb.
-<br /> Next, for player comparision the notebook, WC2018-Player Comparision Visualizations.ipynb was used. This consists of the visuals that were attached to the report and the poster. Other player analysis plots were not attractive visually and those cells have been omitted from the notebook.
-- For the xG Model:
-<br /> 2018WC-xGModel-Create a preprocessed Pickle file.ipynb contains the code for data extraction and cleaning and then converting the clean data frame to a pickle file
-<br /> 2018WC-xGModel-Data Exploration.ipynb contains the code used for exploring the dataset.
-<br /> 2018WC-xGModel-Model Selection.ipynb consists of the code to  select the features and create models using those feature. It also compares the results of different models and determines the best one.
-<br /> 2018WC-xGModel-Model Application includes the code for exploring various applications of the best model.
-- For the model that predicts the numeber of goals:
-<br /> xGModel-version1.ipynb consists the code for Decision Tree Classifier model, that predicts the number of goals scored in the dataset using the xG factor associated with the shot.
+## What you should expect
 
+This is a notebook-first analytics project rather than an app. The main outputs
+are model comparisons, xG analysis, player comparisons, and presentation-ready
+visuals.
 
+## Notes
 
+- The notebook names and folder structure are preserved from the original
+  capstone.
+- The project is easier to maintain if you keep the data-prep steps reproducible.
+- If you only need the highlights, start with the visualization notebook and the
+  model-selection notebook.
 
+## Better tech if you revisit it
 
+A strong modernization path would be:
+
+- `Polars` or `Pandas` for data shaping.
+- `DuckDB` for fast local analytics.
+- `Quarto` or `Jupyter Book` for a polished, reproducible report.
+- `Plotly` or `Altair` for interactive charts.
+- `Streamlit` for a lightweight shareable dashboard.
+
+That would make the project easier to rerun, easier to navigate, and easier to
+present outside of notebook form.
 
