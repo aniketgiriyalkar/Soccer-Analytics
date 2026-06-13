@@ -1,0 +1,510 @@
+{
+  "ManagerTenure": {
+    "additionalProperties": false,
+    "properties": {
+      "end_date": {
+        "anyOf": [
+          {
+            "format": "date",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "End Date"
+      },
+      "id": {
+        "title": "Id",
+        "type": "string"
+      },
+      "manager_id": {
+        "title": "Manager Id",
+        "type": "string"
+      },
+      "manager_name": {
+        "title": "Manager Name",
+        "type": "string"
+      },
+      "matches": {
+        "default": 0,
+        "minimum": 0,
+        "title": "Matches",
+        "type": "integer"
+      },
+      "start_date": {
+        "format": "date",
+        "title": "Start Date",
+        "type": "string"
+      },
+      "team_id": {
+        "title": "Team Id",
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "manager_id",
+      "manager_name",
+      "team_id",
+      "start_date"
+    ],
+    "title": "ManagerTenure",
+    "type": "object"
+  },
+  "Match": {
+    "additionalProperties": false,
+    "properties": {
+      "away_goals": {
+        "anyOf": [
+          {
+            "minimum": 0,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Away Goals"
+      },
+      "away_team_id": {
+        "title": "Away Team Id",
+        "type": "string"
+      },
+      "away_xg": {
+        "anyOf": [
+          {
+            "minimum": 0,
+            "type": "number"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Away Xg"
+      },
+      "competition_id": {
+        "title": "Competition Id",
+        "type": "string"
+      },
+      "home_goals": {
+        "anyOf": [
+          {
+            "minimum": 0,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Home Goals"
+      },
+      "home_team_id": {
+        "title": "Home Team Id",
+        "type": "string"
+      },
+      "home_xg": {
+        "anyOf": [
+          {
+            "minimum": 0,
+            "type": "number"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Home Xg"
+      },
+      "id": {
+        "title": "Id",
+        "type": "string"
+      },
+      "kickoff": {
+        "format": "date-time",
+        "title": "Kickoff",
+        "type": "string"
+      },
+      "provider_id": {
+        "title": "Provider Id",
+        "type": "string"
+      },
+      "season_id": {
+        "title": "Season Id",
+        "type": "string"
+      },
+      "stage": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Stage"
+      }
+    },
+    "required": [
+      "id",
+      "provider_id",
+      "competition_id",
+      "season_id",
+      "home_team_id",
+      "away_team_id",
+      "kickoff"
+    ],
+    "title": "Match",
+    "type": "object"
+  },
+  "MatchEvent": {
+    "additionalProperties": false,
+    "properties": {
+      "detail": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Detail"
+      },
+      "event_type": {
+        "title": "Event Type",
+        "type": "string"
+      },
+      "id": {
+        "title": "Id",
+        "type": "string"
+      },
+      "match_id": {
+        "title": "Match Id",
+        "type": "string"
+      },
+      "minute": {
+        "maximum": 150,
+        "minimum": 0,
+        "title": "Minute",
+        "type": "integer"
+      },
+      "player_id": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Player Id"
+      },
+      "score_state": {
+        "anyOf": [
+          {
+            "pattern": "^(leading|drawing|trailing)$",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Score State"
+      },
+      "second": {
+        "anyOf": [
+          {
+            "maximum": 59,
+            "minimum": 0,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Second"
+      },
+      "team_id": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Team Id"
+      }
+    },
+    "required": [
+      "id",
+      "match_id",
+      "minute",
+      "event_type"
+    ],
+    "title": "MatchEvent",
+    "type": "object"
+  },
+  "MetricCoverage": {
+    "$defs": {
+      "CoverageLevel": {
+        "enum": [
+          "complete",
+          "partial",
+          "unavailable"
+        ],
+        "title": "CoverageLevel",
+        "type": "string"
+      }
+    },
+    "additionalProperties": false,
+    "properties": {
+      "competition_id": {
+        "title": "Competition Id",
+        "type": "string"
+      },
+      "events": {
+        "$ref": "#/$defs/CoverageLevel"
+      },
+      "expected_matches": {
+        "anyOf": [
+          {
+            "minimum": 0,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Expected Matches"
+      },
+      "generated_at": {
+        "format": "date-time",
+        "title": "Generated At",
+        "type": "string"
+      },
+      "ingested_matches": {
+        "default": 0,
+        "minimum": 0,
+        "title": "Ingested Matches",
+        "type": "integer"
+      },
+      "season_id": {
+        "title": "Season Id",
+        "type": "string"
+      },
+      "standard_stats": {
+        "$ref": "#/$defs/CoverageLevel"
+      },
+      "xg": {
+        "$ref": "#/$defs/CoverageLevel"
+      }
+    },
+    "required": [
+      "competition_id",
+      "season_id",
+      "standard_stats",
+      "xg",
+      "events",
+      "generated_at"
+    ],
+    "title": "MetricCoverage",
+    "type": "object"
+  },
+  "Player": {
+    "additionalProperties": false,
+    "properties": {
+      "id": {
+        "title": "Id",
+        "type": "string"
+      },
+      "minutes": {
+        "default": 0,
+        "minimum": 0,
+        "title": "Minutes",
+        "type": "integer"
+      },
+      "name": {
+        "title": "Name",
+        "type": "string"
+      },
+      "position": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Position"
+      },
+      "provider_id": {
+        "title": "Provider Id",
+        "type": "string"
+      },
+      "season_id": {
+        "title": "Season Id",
+        "type": "string"
+      },
+      "team_id": {
+        "title": "Team Id",
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "provider_id",
+      "name",
+      "team_id",
+      "season_id"
+    ],
+    "title": "Player",
+    "type": "object"
+  },
+  "Shot": {
+    "additionalProperties": false,
+    "properties": {
+      "body_part": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Body Part"
+      },
+      "id": {
+        "title": "Id",
+        "type": "string"
+      },
+      "is_home": {
+        "title": "Is Home",
+        "type": "boolean"
+      },
+      "match_id": {
+        "title": "Match Id",
+        "type": "string"
+      },
+      "minute": {
+        "maximum": 150,
+        "minimum": 0,
+        "title": "Minute",
+        "type": "integer"
+      },
+      "player_id": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Player Id"
+      },
+      "result": {
+        "title": "Result",
+        "type": "string"
+      },
+      "situation": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Situation"
+      },
+      "team_id": {
+        "title": "Team Id",
+        "type": "string"
+      },
+      "x": {
+        "maximum": 1,
+        "minimum": 0,
+        "title": "X",
+        "type": "number"
+      },
+      "xg": {
+        "maximum": 1,
+        "minimum": 0,
+        "title": "Xg",
+        "type": "number"
+      },
+      "y": {
+        "maximum": 1,
+        "minimum": 0,
+        "title": "Y",
+        "type": "number"
+      }
+    },
+    "required": [
+      "id",
+      "match_id",
+      "team_id",
+      "minute",
+      "x",
+      "y",
+      "xg",
+      "result",
+      "is_home"
+    ],
+    "title": "Shot",
+    "type": "object"
+  },
+  "Team": {
+    "additionalProperties": false,
+    "properties": {
+      "competition_id": {
+        "title": "Competition Id",
+        "type": "string"
+      },
+      "id": {
+        "title": "Id",
+        "type": "string"
+      },
+      "name": {
+        "title": "Name",
+        "type": "string"
+      },
+      "provider_id": {
+        "title": "Provider Id",
+        "type": "string"
+      },
+      "season_id": {
+        "title": "Season Id",
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "provider_id",
+      "name",
+      "competition_id",
+      "season_id"
+    ],
+    "title": "Team",
+    "type": "object"
+  }
+}

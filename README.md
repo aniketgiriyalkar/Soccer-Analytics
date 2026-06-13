@@ -1,54 +1,123 @@
-# Soccer Analytics
+# Football Lab
 
-Soccer Analytics is a World Cup modeling and visualization capstone focused on
-expected goals, player comparison, and position-based analysis. The notebooks in
-this repository show the full workflow from data prep through modeling and final
-visuals.
+Football Lab modernizes the original Soccer Analytics capstone into a
+coverage-aware web application and reproducible data pipeline. The historical
+2018 World Cup notebooks and StatsBomb open-data snapshot remain preserved at
+the repository root.
 
-## Quick start
+## Product
 
-1. Open the repository in Jupyter Notebook or JupyterLab.
-2. Point the notebooks to the local `open-data` folder.
-3. Run the data-preparation notebooks first, then the exploration and modeling
-   notebooks, and finally the comparison notebooks.
+The static Next.js application supports:
 
-## What’s in the repo
+- Position-aware player comparisons across shooting, creation, progression,
+  defending, duels, discipline, goalkeeping, and expected metrics.
+- Team style and performance comparisons.
+- Manager comparisons segmented by club tenure.
+- Match shot maps and cumulative xG timelines.
+- Neutral game-management analysis based on observed events, without claiming
+  intent.
+- Explicit competition, season, and metric coverage labels.
+- A live architecture view covering sources, orchestration, quality gates,
+  storage, notebooks, application builds, artifact promotion, portfolio sync,
+  and GitHub Pages delivery.
 
-- `open-data/` contains the project data source.
-- `2018WC-xGModel-Create a preprocessed Pickle file.ipynb` prepares the data.
-- `2018WC-xGModel-Data Exploration.ipynb` explores the dataset.
-- `2018WC-xGModel-Model Selection.ipynb` compares model options.
-- `2018WC-xGModel-Model Application.ipynb` explores how the model behaves.
-- `Best Players for each position-avg of top10 features for that position.ipynb`
-  and `Best Players for each position-weighted average.ipynb` support player
-  ranking and best-XI analysis.
-- `WC2018-Player Comparision Visualizations.ipynb` holds the visuals used for
-  the report and poster.
+The application exports with `/football-lab/` as its base path so the portfolio
+can publish it at `aniketgiriyalkar.github.io/football-lab/`.
 
-## What you should expect
+## Web Development
 
-This is a notebook-first analytics project rather than an app. The main outputs
-are model comparisons, xG analysis, player comparisons, and presentation-ready
-visuals.
+```bash
+npm install
+npm run dev
+```
 
-## Notes
+Validate and export:
 
-- The notebook names and folder structure are preserved from the original
-  capstone.
-- The project is easier to maintain if you keep the data-prep steps reproducible.
-- If you only need the highlights, start with the visualization notebook and the
-  model-selection notebook.
+```bash
+npm run check
+```
 
-## Better tech if you revisit it
+The static application is written to `out/`.
 
-A strong modernization path would be:
+## Data Pipeline
 
-- `Polars` or `Pandas` for data shaping.
-- `DuckDB` for fast local analytics.
-- `Quarto` or `Jupyter Book` for a polished, reproducible report.
-- `Plotly` or `Altair` for interactive charts.
-- `Streamlit` for a lightweight shareable dashboard.
+Install the package:
 
-That would make the project easier to rerun, easier to navigate, and easier to
-present outside of notebook form.
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+```
 
+Historical Understat backfill:
+
+```bash
+football-lab backfill \
+  --league premier-league \
+  --from-season 2014 \
+  --to-season 2025 \
+  --include-shots
+```
+
+Other commands:
+
+```bash
+football-lab refresh-current
+football-lab refresh-season --league la-liga --season 2020
+football-lab rebuild-aggregates
+football-lab audit-coverage
+football-lab export-schema
+football-lab publish-frontend
+```
+
+Understat is used for domestic-league expected metrics and shot data. The
+football-data.org adapter supplements fixtures, tables, and Champions League
+structure when `FOOTBALL_DATA_API_KEY` is configured. Raw responses are cached,
+normalized data is partitioned as Parquet, and DuckDB provides notebook access.
+
+## Data Integrity
+
+- Source-specific payloads remain behind provider adapters.
+- Ingestion is cache-backed, idempotent, and restartable by league-season.
+- Provider xG is preserved separately from observed goals.
+- Missing metrics remain unavailable rather than being estimated silently.
+- Discipline is factual; game-management indicators are descriptive proxies.
+- Manager outcomes are reported with tenure and sample-size context.
+
+The committed JSON dataset is a clearly labelled demonstration snapshot. The
+scheduled and manually dispatched workflows produce validated provider-backed
+artifacts without committing raw caches or large Parquet files.
+
+## Automation
+
+- `validate.yml` runs Python and web checks on pushes and pull requests.
+- `ingest.yml` refreshes active seasons daily and supports historical backfills.
+- After validation, `ingest.yml` commits only `public/data/*.json` to `master`
+  using the `football-lab-data-bot` identity. Raw responses, checkpoints,
+  Parquet, and DuckDB remain private workflow artifacts.
+- Normalized Parquet and checkpoints use a rolling Actions cache so manual
+  historical backfills remain available to subsequent daily refreshes.
+- A changed snapshot also updates the `football-lab-latest` release. The
+  portfolio independently checks this validated release on its daily schedule
+  and atomically republishes `/football-lab/`, so no cross-repository token is
+  stored.
+- `promote.yml` publishes a last-known-good static ZIP to the
+  `football-lab-latest` release.
+
+### GitHub Actions secrets
+
+Authenticate the GitHub CLI, then run the interactive setup:
+
+```bash
+gh auth login
+./scripts/configure-github-secrets.sh
+```
+
+The script reads values without echoing them and uploads them directly to the
+`Soccer-Analytics` repository. It does not write a local credentials file.
+`FOOTBALL_DATA_API_KEY` and `API_FOOTBALL_KEY` are optional supplemental data
+providers. They are exposed only to the ingestion commands that require them,
+not to validation, frontend builds, or third-party publishing steps.
+
+Local `.env` files, private key material, and common secret-file patterns are
+ignored. `.env.example` contains names only and is safe to commit.

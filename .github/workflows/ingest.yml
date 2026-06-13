@@ -1,0 +1,151 @@
+name: Refresh Football Lab data
+
+on:
+  schedule:
+    - cron: "23 7 * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Ingestion mode
+        type: choice
+        options: [refresh-current, backfill, refresh-season]
+        default: refresh-current
+      league:
+        description: League slug for historical ingestion
+        type: choice
+        options: [premier-league, la-liga, bundesliga, serie-a, ligue-1]
+        default: premier-league
+      from_season:
+        description: First season start year
+        default: "2014"
+      to_season:
+        description: Last season start year
+        default: "2014"
+      include_shots:
+        description: Fetch match-level shots
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: football-lab-ingestion
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -e ".[dev]"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Restore normalized historical store
+        uses: actions/cache@v4
+        with:
+          path: |
+            data/parquet
+            data/checkpoints
+          key: football-lab-normalized-${{ github.run_id }}
+          restore-keys: |
+            football-lab-normalized-
+
+      - name: Refresh active seasons
+        if: github.event_name == 'schedule' || inputs.mode == 'refresh-current'
+        env:
+          FOOTBALL_DATA_API_KEY: ${{ secrets.FOOTBALL_DATA_API_KEY }}
+          API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
+        run: football-lab refresh-current
+
+      - name: Backfill historical range
+        if: inputs.mode == 'backfill'
+        env:
+          FOOTBALL_DATA_API_KEY: ${{ secrets.FOOTBALL_DATA_API_KEY }}
+          API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
+        run: >-
+          football-lab backfill
+          --league "${{ inputs.league }}"
+          --from-season "${{ inputs.from_season }}"
+          --to-season "${{ inputs.to_season }}"
+          ${{ inputs.include_shots && '--include-shots' || '' }}
+
+      - name: Refresh one historical season
+        if: inputs.mode == 'refresh-season'
+        env:
+          FOOTBALL_DATA_API_KEY: ${{ secrets.FOOTBALL_DATA_API_KEY }}
+          API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
+        run: >-
+          football-lab refresh-season
+          --league "${{ inputs.league }}"
+          --season "${{ inputs.from_season }}"
+          ${{ inputs.include_shots && '--include-shots' || '' }}
+
+      - name: Rebuild analytical database and schemas
+        run: |
+          football-lab rebuild-aggregates
+          football-lab export-schema
+          football-lab publish-frontend
+          football-lab audit-coverage
+
+      - name: Validate pipeline and static application
+        run: |
+          pytest
+          ruff check src tests
+          npm run check
+
+      - name: Commit validated public snapshot
+        id: commit_snapshot
+        run: |
+          git config user.name "football-lab-data-bot"
+          git config user.email "football-lab-data-bot@users.noreply.github.com"
+          git add \
+            public/data/football-lab.json \
+            public/data/schema.json \
+            public/data/snapshot-manifest.json
+          if git diff --cached --quiet; then
+            echo "No public data changes to commit."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git commit -m "chore(data): daily football snapshot [skip ci]"
+          git fetch origin master
+          git rebase origin/master
+          git push origin HEAD:master
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Promote validated daily application
+        if: steps.commit_snapshot.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd out
+          zip -qr ../football-lab.zip .
+          cd ..
+          gh release view football-lab-latest >/dev/null 2>&1 ||
+            gh release create football-lab-latest \
+              --title "Football Lab latest" \
+              --notes "Latest validated scheduled Football Lab build."
+          gh release upload football-lab-latest football-lab.zip --clobber
+
+      - name: Upload private pipeline output
+        uses: actions/upload-artifact@v4
+        with:
+          name: football-lab-data-${{ github.run_id }}
+          path: |
+            data/parquet
+            data/checkpoints
+            public/data
+          retention-days: 30
