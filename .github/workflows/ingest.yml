@@ -121,6 +121,9 @@ jobs:
             exit 0
           fi
           git commit -m "chore(data): daily football snapshot [skip ci]"
+          # The frontend build updates its tracked build timestamp. Keep the
+          # validated data commit focused before rebasing onto concurrent changes.
+          git restore --worktree .
           git fetch origin master
           git rebase origin/master
           git push origin HEAD:master
