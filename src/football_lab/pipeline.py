@@ -79,9 +79,10 @@ class Pipeline:
             pattern = str(PARQUET_DIR / "competition=*" / "season=*" / f"{entity}.parquet")
             files = list(PARQUET_DIR.glob(f"competition=*/season=*/{entity}.parquet"))
             if files:
+                escaped_pattern = pattern.replace("'", "''")
                 connection.execute(
-                    f"CREATE OR REPLACE VIEW {entity} AS SELECT * FROM read_parquet(?)",
-                    [pattern],
+                    f"CREATE OR REPLACE VIEW {entity} "
+                    f"AS SELECT * FROM read_parquet('{escaped_pattern}')"
                 )
         connection.close()
 

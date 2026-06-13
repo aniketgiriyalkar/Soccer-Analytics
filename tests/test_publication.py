@@ -1,10 +1,29 @@
 import json
 from pathlib import Path
 
+import duckdb
 import polars as pl
 
 import football_lab.pipeline as pipeline_module
 from football_lab.pipeline import Pipeline
+
+
+def test_rebuild_aggregates_creates_queryable_views(
+    tmp_path: Path, monkeypatch
+) -> None:
+    parquet = tmp_path / "parquet"
+    partition = parquet / "competition=premier-league" / "season=2025"
+    partition.mkdir(parents=True)
+    pl.DataFrame([{"id": "match-1"}]).write_parquet(partition / "matches.parquet")
+    monkeypatch.setattr(pipeline_module, "PARQUET_DIR", parquet)
+
+    Pipeline().rebuild_aggregates()
+
+    connection = duckdb.connect(str(parquet / "football_lab.duckdb"))
+    try:
+        assert connection.execute("SELECT count(*) FROM matches").fetchone() == (1,)
+    finally:
+        connection.close()
 
 
 def test_publish_frontend_builds_compact_provider_snapshot(
