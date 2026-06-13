@@ -1,0 +1,14 @@
+{
+  "coverageRecords": 5,
+  "dataVersion": "2026.06.13-4f8c23f25d14",
+  "generatedAt": "2026-06-13T13:23:53.712076Z",
+  "partitions": {
+    "matches": 5,
+    "players": 5,
+    "teams": 5
+  },
+  "players": 1979,
+  "schemaVersion": "1.0",
+  "shots": 0,
+  "teams": 96
+}
