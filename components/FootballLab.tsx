@@ -190,17 +190,76 @@ function SectionHeading({
 }
 
 function Overview({ data }: { data: FootballLabData }) {
+  const [scatterX, setScatterX] = useState("xg_per90");
+  const [scatterY, setScatterY] = useState("xa_per90");
+  const [scatterPosition, setScatterPosition] = useState("All positions");
+  const [minimumMinutes, setMinimumMinutes] = useState("900");
+  const [scatterLimit, setScatterLimit] = useState("50");
+  const [radarPlayerId, setRadarPlayerId] = useState("");
+  const [radarPosition, setRadarPosition] = useState("All positions");
+  const [radarCategory, setRadarCategory] = useState("All");
+  const [trajectoryTeamIds, setTrajectoryTeamIds] = useState<string[]>([]);
+  const [teamToAdd, setTeamToAdd] = useState("");
+  const [leaderMetric, setLeaderMetric] = useState("xg_per90");
+  const [leaderPosition, setLeaderPosition] = useState("All positions");
   const cards = [
     ["5", "Domestic leagues", "Backfill-ready from 2014/15"],
     ["8", "Position groups", "Role-specific comparison templates"],
     ["10", "Metric categories", "Expected and observed performance"],
     ["1", "European competition", "Champions League coverage-aware"],
   ];
-  const topPlayers = [...data.players]
-    .sort((a, b) => (b.percentiles.xg_per90 ?? 0) - (a.percentiles.xg_per90 ?? 0))
+  const playerMetrics = data.metrics.filter(
+    (metric) =>
+      PRIMARY_PLAYER_METRICS.includes(metric.key) &&
+      data.players.some((player) => Number.isFinite(player.metrics[metric.key])),
+  );
+  const metricByKey = new Map(playerMetrics.map((metric) => [metric.key, metric]));
+  const positions = ["All positions", ...new Set(data.players.map((player) => player.position))];
+  const metricCategories = ["All", ...new Set(playerMetrics.map((metric) => metric.category))];
+  const scatterPlayers = data.players
+    .filter(
+      (player) =>
+        (scatterPosition === "All positions" || player.position === scatterPosition) &&
+        player.minutes >= Number(minimumMinutes),
+    )
+    .sort((a, b) => b.minutes - a.minutes)
+    .slice(0, Number(scatterLimit));
+  const radarPlayers = data.players.filter(
+    (player) => radarPosition === "All positions" || player.position === radarPosition,
+  );
+  const radarPlayer =
+    radarPlayers.find((player) => playerKey(player) === radarPlayerId) ??
+    radarPlayers[0] ??
+    data.players[0];
+  const radarMetrics = playerMetrics
+    .filter((metric) => radarCategory === "All" || metric.category === radarCategory)
+    .slice(0, 6);
+  const selectedTrajectoryTeams = trajectoryTeamIds
+    .map((id) => data.teams.find((team) => team.id === id))
+    .filter((team): team is Team => Boolean(team));
+  const trajectoryTeams =
+    selectedTrajectoryTeams.length > 0 ? selectedTrajectoryTeams : data.teams.slice(0, 4);
+  const topPlayers = data.players
+    .filter((player) => leaderPosition === "All positions" || player.position === leaderPosition)
+    .sort(
+      (a, b) =>
+        (b.percentiles[leaderMetric] ?? 0) - (a.percentiles[leaderMetric] ?? 0) ||
+        (b.metrics[leaderMetric] ?? 0) - (a.metrics[leaderMetric] ?? 0),
+    )
     .slice(0, 5);
+  const xMetric = metricByKey.get(scatterX) ?? playerMetrics[0];
+  const yMetric = metricByKey.get(scatterY) ?? playerMetrics[1] ?? playerMetrics[0];
+  const rankingMetric = metricByKey.get(leaderMetric) ?? playerMetrics[0];
   if (!data.players.length || !data.teams.length) {
     return <EmptyDataset title="No published analytical snapshot for this selection." />;
+  }
+
+  function addTrajectoryTeam() {
+    if (!teamToAdd || trajectoryTeamIds.includes(teamToAdd) || trajectoryTeamIds.length >= 4) {
+      return;
+    }
+    setTrajectoryTeamIds((current) => [...current, teamToAdd]);
+    setTeamToAdd("");
   }
 
   return (
@@ -222,38 +281,135 @@ function Overview({ data }: { data: FootballLabData }) {
       <div className="dashboard-grid">
         <article className="panel span-7">
           <PanelTitle title="Attacking output" note="Position percentiles · per 90" />
+          <div className="plot-filters" aria-label="Attacking output filters">
+            <PlotSelect label="Horizontal axis" value={xMetric?.key ?? ""} onChange={setScatterX}>
+              {playerMetrics.map((metric) => (
+                <option key={metric.key} value={metric.key}>{metric.label}</option>
+              ))}
+            </PlotSelect>
+            <PlotSelect label="Vertical axis" value={yMetric?.key ?? ""} onChange={setScatterY}>
+              {playerMetrics.map((metric) => (
+                <option key={metric.key} value={metric.key}>{metric.label}</option>
+              ))}
+            </PlotSelect>
+            <PlotSelect label="Position" value={scatterPosition} onChange={setScatterPosition}>
+              {positions.map((position) => <option key={position}>{position}</option>)}
+            </PlotSelect>
+            <PlotSelect label="Minimum minutes" value={minimumMinutes} onChange={setMinimumMinutes}>
+              <option value="450">450+</option>
+              <option value="900">900+</option>
+              <option value="1800">1,800+</option>
+              <option value="2700">2,700+</option>
+            </PlotSelect>
+            <PlotSelect label="Players shown" value={scatterLimit} onChange={setScatterLimit}>
+              <option value="25">25</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+            </PlotSelect>
+          </div>
           <ScatterPlot
-            players={data.players}
-            xKey="xg_per90"
-            xLabel="Expected goals / 90"
-            yKey="xa_per90"
-            yLabel="Expected assists / 90"
+            players={scatterPlayers}
+            xKey={xMetric?.key ?? "xg_per90"}
+            xLabel={xMetric?.label ?? "Expected goals / 90"}
+            yKey={yMetric?.key ?? "xa_per90"}
+            yLabel={yMetric?.label ?? "Expected assists / 90"}
           />
+          <p className="plot-caption">{scatterPlayers.length} players shown, ordered by minutes.</p>
         </article>
         <article className="panel span-5">
           <PanelTitle title="Player radar" note="Multi-category profile" />
+          <div className="plot-filters compact" aria-label="Player radar filters">
+            <PlotSelect label="Position" value={radarPosition} onChange={setRadarPosition}>
+              {positions.map((position) => <option key={position}>{position}</option>)}
+            </PlotSelect>
+            <PlotSelect
+              label="Player"
+              value={playerKey(radarPlayer)}
+              onChange={setRadarPlayerId}
+            >
+              {radarPlayers.map((player) => (
+                <option key={playerKey(player)} value={playerKey(player)}>
+                  {player.name} · {player.team}
+                </option>
+              ))}
+            </PlotSelect>
+            <PlotSelect label="Metric family" value={radarCategory} onChange={setRadarCategory}>
+              {metricCategories.map((category) => <option key={category}>{category}</option>)}
+            </PlotSelect>
+          </div>
           <RadarChart
-            player={data.players[0]}
-            metrics={data.metrics.filter((metric) =>
-              PRIMARY_PLAYER_METRICS.slice(0, 6).includes(metric.key),
-            )}
+            player={radarPlayer}
+            metrics={radarMetrics}
           />
         </article>
         <article className="panel span-7">
           <PanelTitle title="Team performance trajectory" note="Rolling five-match points" />
-          <LineChart teams={data.teams.slice(0, 4)} />
+          <div className="plot-team-controls">
+            <label>
+              <span>Add team</span>
+              <select value={teamToAdd} onChange={(event) => setTeamToAdd(event.target.value)}>
+                <option value="">Choose a team</option>
+                {data.teams
+                  .filter((team) => !trajectoryTeams.some((selected) => selected.id === team.id))
+                  .map((team) => (
+                    <option key={team.id} value={team.id}>{team.name}</option>
+                  ))}
+              </select>
+            </label>
+            <button
+              disabled={!teamToAdd || trajectoryTeams.length >= 4}
+              onClick={addTrajectoryTeam}
+              type="button"
+            >
+              Add
+            </button>
+            <div className="selected-team-chips" aria-label="Teams shown">
+              {trajectoryTeams.map((team) => (
+                <button
+                  key={team.id}
+                  onClick={() =>
+                    setTrajectoryTeamIds(
+                      trajectoryTeams.filter((item) => item.id !== team.id).map((item) => item.id),
+                    )
+                  }
+                  type="button"
+                >
+                  {team.name}<span aria-hidden="true">×</span>
+                </button>
+              ))}
+            </div>
+          </div>
+          <LineChart teams={trajectoryTeams} />
         </article>
         <article className="panel span-5">
-          <PanelTitle title="xG leaders" note="One signal among many" />
+          <PanelTitle title={`${rankingMetric?.label ?? "Metric"} leaders`} note="One signal among many" />
+          <div className="plot-filters compact" aria-label="Leaderboard filters">
+            <PlotSelect
+              label="Ranking metric"
+              value={rankingMetric?.key ?? ""}
+              onChange={setLeaderMetric}
+            >
+              {playerMetrics.map((metric) => (
+                <option key={metric.key} value={metric.key}>{metric.label}</option>
+              ))}
+            </PlotSelect>
+            <PlotSelect label="Position" value={leaderPosition} onChange={setLeaderPosition}>
+              {positions.map((position) => <option key={position}>{position}</option>)}
+            </PlotSelect>
+          </div>
           <div className="rank-list">
             {topPlayers.map((player, index) => (
-              <div key={player.id}>
+              <div key={playerKey(player)}>
                 <span>{String(index + 1).padStart(2, "0")}</span>
                 <div>
                   <strong>{player.name}</strong>
                   <small>{player.team} · {player.position}</small>
                 </div>
-                <b>{player.metrics.xg_per90.toFixed(2)}</b>
+                <b>
+                  {rankingMetric
+                    ? formatMetric(player.metrics[rankingMetric.key] ?? 0, rankingMetric)
+                    : "—"}
+                </b>
               </div>
             ))}
           </div>
@@ -268,9 +424,13 @@ function PlayerCompare({ data }: { data: FootballLabData }) {
   const eligible = data.players.filter(
     (player) => position === "All positions" || player.position === position,
   );
-  const [selectedIds, setSelectedIds] = useState(data.players.slice(0, 3).map((player) => player.id));
+  const [selectedIds, setSelectedIds] = useState(
+    data.players.slice(0, 3).map((player) => playerKey(player)),
+  );
   const [category, setCategory] = useState("All");
-  const selected = data.players.filter((player) => selectedIds.includes(player.id)).slice(0, 5);
+  const selected = data.players
+    .filter((player) => selectedIds.includes(playerKey(player)))
+    .slice(0, 5);
   const categories = ["All", ...new Set(data.metrics.map((metric) => metric.category))];
   const metrics = data.metrics.filter(
     (metric) =>
@@ -313,10 +473,13 @@ function PlayerCompare({ data }: { data: FootballLabData }) {
         </div>
         <div className="player-picker">
           {eligible.map((player) => (
-            <label className={selectedIds.includes(player.id) ? "selected" : ""} key={player.id}>
+            <label
+              className={selectedIds.includes(playerKey(player)) ? "selected" : ""}
+              key={playerKey(player)}
+            >
               <input
-                checked={selectedIds.includes(player.id)}
-                onChange={() => togglePlayer(player.id)}
+                checked={selectedIds.includes(playerKey(player))}
+                onChange={() => togglePlayer(playerKey(player))}
                 type="checkbox"
               />
               <span>{initials(player.name)}</span>
@@ -738,6 +901,27 @@ function PanelTitle({ title, note }: { title: string; note: string }) {
   return <div className="panel-title"><h3>{title}</h3><span>{note}</span></div>;
 }
 
+function PlotSelect({
+  children,
+  label,
+  onChange,
+  value,
+}: {
+  children: React.ReactNode;
+  label: string;
+  onChange: (value: string) => void;
+  value: string;
+}) {
+  return (
+    <label>
+      <span>{label}</span>
+      <select value={value} onChange={(event) => onChange(event.target.value)}>
+        {children}
+      </select>
+    </label>
+  );
+}
+
 function CoverageRow({ label, level }: { label: string; level: string }) {
   return <div className="coverage-row"><span>{label}</span><b className={level}>{level}</b></div>;
 }
@@ -782,11 +966,14 @@ function ScatterPlot({
 }: {
   players: Player[]; xKey: string; xLabel: string; yKey: string; yLabel: string;
 }) {
+  if (!players.length) {
+    return <p className="empty-state">No players meet these plot filters.</p>;
+  }
   const width = 680;
   const height = 390;
   const pad = 58;
-  const maxX = Math.max(...players.map((player) => player.metrics[xKey] ?? 0)) * 1.15;
-  const maxY = Math.max(...players.map((player) => player.metrics[yKey] ?? 0)) * 1.15;
+  const maxX = Math.max(...players.map((player) => player.metrics[xKey] ?? 0), 0.01) * 1.15;
+  const maxY = Math.max(...players.map((player) => player.metrics[yKey] ?? 0), 0.01) * 1.15;
   return (
     <svg className="scatter" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${xLabel} compared with ${yLabel}`}>
       {[0, 1, 2, 3, 4].map((tick) => (
@@ -799,7 +986,7 @@ function ScatterPlot({
         const x = pad + (player.metrics[xKey] / maxX) * (width - pad * 2);
         const y = height - pad - (player.metrics[yKey] / maxY) * (height - pad * 2);
         return (
-          <g key={player.id}>
+          <g key={playerKey(player)}>
             <circle cx={x} cy={y} fill={PLAYER_COLORS[index % PLAYER_COLORS.length]} r="8" />
             <text x={x + 12} y={y + 4}>{player.name.split(" ").at(-1)}</text>
           </g>
@@ -818,7 +1005,7 @@ function MetricBars({ players, metrics }: { players: Player[]; metrics: Metric[]
         <div className="metric-row" key={metric.key}>
           <div><strong>{metric.label}</strong><span title={metric.description}>ⓘ</span></div>
           {players.map((player, index) => (
-            <div className="bar-row" key={player.id}>
+            <div className="bar-row" key={playerKey(player)}>
               <span>{player.name}</span>
               <div><i style={{ background: PLAYER_COLORS[index], width: `${player.percentiles[metric.key] ?? 0}%` }} /></div>
               <b>{formatMetric(player.metrics[metric.key] ?? 0, metric)}</b>
@@ -834,13 +1021,13 @@ function ComparisonTable({ players, metrics }: { players: Player[]; metrics: Met
   return (
     <div className="table-scroll">
       <table>
-        <thead><tr><th>Metric</th>{players.map((player) => <th key={player.id}>{player.name}<small>{player.position}</small></th>)}</tr></thead>
+        <thead><tr><th>Metric</th>{players.map((player) => <th key={playerKey(player)}>{player.name}<small>{player.position}</small></th>)}</tr></thead>
         <tbody>
           {metrics.map((metric) => (
             <tr key={metric.key}>
               <th>{metric.label}<small>{metric.category} · {metric.unit}</small></th>
               {players.map((player) => (
-                <td key={player.id}>
+                <td key={playerKey(player)}>
                   <strong>{formatMetric(player.metrics[metric.key] ?? 0, metric)}</strong>
                   <span style={{ color: scoreColor(player.percentiles[metric.key] ?? 0) }}>{player.percentiles[metric.key] ?? 0}th pct</span>
                 </td>
@@ -985,6 +1172,10 @@ function XgTimeline({ shots }: { shots: Shot[] }) {
 
 function initials(name: string) {
   return name.split(" ").map((part) => part[0]).join("").slice(0, 2);
+}
+
+function playerKey(player: Player) {
+  return `${player.competition}:${player.season}:${player.id}`;
 }
 
 function ordinal(value: number) {
