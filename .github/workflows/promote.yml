@@ -1,0 +1,32 @@
+name: Promote Football Lab artifact
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm run check
+
+      - name: Package static application
+        run: cd out && zip -qr ../football-lab.zip .
+
+      - name: Publish last-known-good release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view football-lab-latest >/dev/null 2>&1 ||
+            gh release create football-lab-latest --title "Football Lab latest" --notes "Promoted static Football Lab build."
+          gh release upload football-lab-latest football-lab.zip --clobber

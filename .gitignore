@@ -1,0 +1,28 @@
+.DS_Store
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+.secrets/
+secrets/
+*.secret
+*.secrets
+*.pem
+*.key
+credentials.local.json
+
+# Application and tooling output
+.next/
+node_modules/
+out/
+coverage/
+.pytest_cache/
+__pycache__/
+*.py[cod]
+*.tsbuildinfo
+.venv/
+data/raw/
+data/parquet/
+data/checkpoints/
+dist/

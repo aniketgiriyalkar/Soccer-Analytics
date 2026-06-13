@@ -1,0 +1,119 @@
+{
+  "manifest": {
+    "schemaVersion": "1.0",
+    "dataVersion": "demo-2026.06.12",
+    "generatedAt": "2026-06-12T12:00:00Z",
+    "sourceCommit": "279c87dabd40313c15dc95eba8bc7a9803901e6c",
+    "status": "Validated demonstration dataset",
+    "disclaimer": "The bundled dataset demonstrates the product and analytical contracts. Run the ingestion workflows to replace it with attributed provider data before presenting values as current."
+  },
+  "pipeline": {
+    "schedule": "Daily at 07:23 UTC",
+    "promotion": "Automatic promotion after validated daily snapshot",
+    "stages": [
+      {"id":"sources","label":"Football providers","layer":"Sources","technology":"Understat + football-data.org","status":"external","detail":"Domestic xG and shots are collected from Understat. Fixtures, tables, and UEFA structure can be supplemented through football-data.org.","input":"Public pages and provider APIs","output":"Cached provider responses"},
+      {"id":"orchestration","label":"Scheduled ingestion","layer":"Orchestration","technology":"GitHub Actions + Python CLI","status":"active","detail":"Daily current-season refreshes and manually dispatched historical backfills run in bounded competition-season batches.","input":"Schedule or workflow dispatch","output":"Versioned ingestion run"},
+      {"id":"raw","label":"Raw response cache","layer":"Landing zone","technology":"Immutable files + SHA-256","status":"ready","detail":"Provider responses are cached before transformation so runs are resumable, auditable, and conservative with source traffic.","input":"Provider responses","output":"Hashed raw snapshots"},
+      {"id":"validation","label":"Contract validation","layer":"Quality","technology":"Pydantic + Pytest","status":"active","detail":"Schemas, coordinate ranges, tenure boundaries, match counts, metric coverage, and behavioral proxy inputs are checked before publication.","input":"Raw snapshots","output":"Validated normalized records"},
+      {"id":"warehouse","label":"Analytical storage","layer":"Storage","technology":"Polars + Parquet + DuckDB","status":"ready","detail":"Normalized entities are partitioned by competition and season in compressed Parquet, with DuckDB views for analytics and notebooks.","input":"Validated entities","output":"Queryable analytical tables"},
+      {"id":"analytics","label":"Metric engine","layer":"Transformation","technology":"Python analytics","status":"ready","detail":"Per-90 rates, percentiles, expected points, manager tenure segments, discipline, and neutral game-management indicators are computed here.","input":"Analytical tables","output":"Aggregates and chart series"},
+      {"id":"notebooks","label":"Research notebooks","layer":"Analysis branch","technology":"Jupyter + DuckDB","status":"ready","detail":"Historical and exploratory analysis reads the same normalized Parquet and DuckDB data used by the product.","input":"DuckDB views","output":"Reproducible studies"},
+      {"id":"publish","label":"Frontend data contract","layer":"Serving","technology":"Versioned JSON + JSON Schema","status":"active","detail":"Only optimized frontend records, metric definitions, coverage labels, and precomputed chart series enter the public bundle.","input":"Validated aggregates","output":"football-lab.json"},
+      {"id":"application","label":"Football Lab export","layer":"Product","technology":"Next.js + TypeScript + SVG","status":"active","detail":"The static application renders player, team, manager, match, coverage, and architecture views at the /football-lab base path.","input":"Versioned public JSON","output":"Static application artifact"},
+      {"id":"promotion","label":"Artifact promotion","layer":"Release","technology":"GitHub Release","status":"active","detail":"Each changed daily snapshot is packaged as the last-known-good release after all ingestion, Python, TypeScript, frontend, and static-build checks pass.","input":"Passing static export","output":"football-lab-latest.zip"},
+      {"id":"portfolio","label":"Portfolio synchronization","layer":"Integration","technology":"Atomic Node.js sync","status":"ready","detail":"The portfolio validates the build manifest and atomically replaces public/football-lab while preserving the previous artifact on failure.","input":"Promoted release or local export","output":"Portfolio public route"},
+      {"id":"delivery","label":"Public deployment","layer":"Delivery","technology":"GitHub Pages","status":"ready","detail":"The portfolio static export publishes Football Lab at the canonical /football-lab/ URL without exposing provider credentials.","input":"Combined portfolio export","output":"Public Football Lab"}
+    ]
+  },
+  "metrics": [
+    {"key":"goals_per90","label":"Goals","category":"Shooting","unit":"per 90","higherIsBetter":true,"description":"Non-penalty and penalty goals scored per 90 minutes."},
+    {"key":"xg_per90","label":"Expected goals","category":"Expected performance","unit":"per 90","higherIsBetter":true,"description":"Provider-supplied expected goals per 90 minutes."},
+    {"key":"xa_per90","label":"Expected assists","category":"Creation","unit":"per 90","higherIsBetter":true,"description":"Expected assists generated per 90 minutes."},
+    {"key":"key_passes_per90","label":"Key passes","category":"Creation","unit":"per 90","higherIsBetter":true,"description":"Passes leading directly to a shot per 90 minutes."},
+    {"key":"progressive_actions_per90","label":"Progressive actions","category":"Progression","unit":"per 90","higherIsBetter":true,"description":"Progressive passes and carries per 90 minutes."},
+    {"key":"duel_win_pct","label":"Duel win rate","category":"Duels","unit":"%","higherIsBetter":true,"description":"Share of contested ground and aerial duels won."},
+    {"key":"recoveries_per90","label":"Recoveries","category":"Defending","unit":"per 90","higherIsBetter":true,"description":"Loose-ball and possession recoveries per 90 minutes."},
+    {"key":"cards_per90","label":"Cards","category":"Discipline","unit":"per 90","higherIsBetter":false,"description":"Yellow and red card equivalents per 90 minutes."},
+    {"key":"restart_delay_seconds","label":"Restart delay","category":"Game management","unit":"seconds","higherIsBetter":false,"description":"Median observed restart duration. Descriptive context, not proof of intent."},
+    {"key":"save_pct","label":"Save percentage","category":"Goalkeeping","unit":"%","higherIsBetter":true,"description":"On-target shots saved by the goalkeeper."}
+  ],
+  "players": [
+    {
+      "id":"p-saka","name":"Bukayo Saka","team":"Arsenal FC","competition":"Premier League","season":"2025/26","position":"Winger","age":24,"minutes":2850,
+      "metrics":{"goals_per90":0.52,"xg_per90":0.48,"xa_per90":0.31,"key_passes_per90":2.42,"progressive_actions_per90":9.1,"duel_win_pct":52.4,"recoveries_per90":4.2,"cards_per90":0.08,"restart_delay_seconds":9.8,"save_pct":0},
+      "percentiles":{"goals_per90":86,"xg_per90":88,"xa_per90":84,"key_passes_per90":91,"progressive_actions_per90":94,"duel_win_pct":62,"recoveries_per90":53,"cards_per90":76,"restart_delay_seconds":55,"save_pct":0}
+    },
+    {
+      "id":"p-haaland","name":"Erling Haaland","team":"Manchester Blue","competition":"Premier League","season":"2025/26","position":"Striker","age":25,"minutes":3010,
+      "metrics":{"goals_per90":0.83,"xg_per90":0.78,"xa_per90":0.12,"key_passes_per90":0.88,"progressive_actions_per90":3.8,"duel_win_pct":47.9,"recoveries_per90":1.7,"cards_per90":0.05,"restart_delay_seconds":8.2,"save_pct":0},
+      "percentiles":{"goals_per90":97,"xg_per90":98,"xa_per90":38,"key_passes_per90":34,"progressive_actions_per90":29,"duel_win_pct":47,"recoveries_per90":21,"cards_per90":84,"restart_delay_seconds":62,"save_pct":0}
+    },
+    {
+      "id":"p-wirtz","name":"Florian Wirtz","team":"Leverkusen","competition":"Bundesliga","season":"2025/26","position":"Attacking midfield","age":23,"minutes":2675,
+      "metrics":{"goals_per90":0.39,"xg_per90":0.34,"xa_per90":0.42,"key_passes_per90":2.91,"progressive_actions_per90":10.4,"duel_win_pct":50.8,"recoveries_per90":4.8,"cards_per90":0.11,"restart_delay_seconds":8.5,"save_pct":0},
+      "percentiles":{"goals_per90":82,"xg_per90":76,"xa_per90":95,"key_passes_per90":96,"progressive_actions_per90":97,"duel_win_pct":55,"recoveries_per90":58,"cards_per90":68,"restart_delay_seconds":60,"save_pct":0}
+    },
+    {
+      "id":"p-yamal","name":"Lamine Yamal","team":"Barcelona","competition":"La Liga","season":"2025/26","position":"Winger","age":18,"minutes":2730,
+      "metrics":{"goals_per90":0.46,"xg_per90":0.39,"xa_per90":0.38,"key_passes_per90":2.72,"progressive_actions_per90":11.2,"duel_win_pct":49.6,"recoveries_per90":3.8,"cards_per90":0.07,"restart_delay_seconds":7.9,"save_pct":0},
+      "percentiles":{"goals_per90":84,"xg_per90":79,"xa_per90":92,"key_passes_per90":94,"progressive_actions_per90":99,"duel_win_pct":51,"recoveries_per90":44,"cards_per90":78,"restart_delay_seconds":66,"save_pct":0}
+    },
+    {
+      "id":"p-barella","name":"Nicolò Barella","team":"Inter","competition":"Serie A","season":"2025/26","position":"Central midfield","age":29,"minutes":2890,
+      "metrics":{"goals_per90":0.18,"xg_per90":0.16,"xa_per90":0.28,"key_passes_per90":2.01,"progressive_actions_per90":8.9,"duel_win_pct":54.7,"recoveries_per90":6.5,"cards_per90":0.21,"restart_delay_seconds":10.4,"save_pct":0},
+      "percentiles":{"goals_per90":72,"xg_per90":66,"xa_per90":88,"key_passes_per90":86,"progressive_actions_per90":91,"duel_win_pct":71,"recoveries_per90":82,"cards_per90":42,"restart_delay_seconds":48,"save_pct":0}
+    },
+    {
+      "id":"p-vitinha","name":"Vitinha","team":"Paris","competition":"Ligue 1","season":"2025/26","position":"Central midfield","age":26,"minutes":2940,
+      "metrics":{"goals_per90":0.15,"xg_per90":0.13,"xa_per90":0.25,"key_passes_per90":1.84,"progressive_actions_per90":10.1,"duel_win_pct":56.2,"recoveries_per90":6.1,"cards_per90":0.12,"restart_delay_seconds":7.6,"save_pct":0},
+      "percentiles":{"goals_per90":67,"xg_per90":61,"xa_per90":84,"key_passes_per90":81,"progressive_actions_per90":96,"duel_win_pct":76,"recoveries_per90":78,"cards_per90":63,"restart_delay_seconds":70,"save_pct":0}
+    },
+    {
+      "id":"p-saliba","name":"William Saliba","team":"Arsenal FC","competition":"Premier League","season":"2025/26","position":"Centre-back","age":25,"minutes":3240,
+      "metrics":{"goals_per90":0.05,"xg_per90":0.06,"xa_per90":0.02,"key_passes_per90":0.35,"progressive_actions_per90":6.8,"duel_win_pct":67.5,"recoveries_per90":7.2,"cards_per90":0.13,"restart_delay_seconds":10.1,"save_pct":0},
+      "percentiles":{"goals_per90":48,"xg_per90":51,"xa_per90":33,"key_passes_per90":42,"progressive_actions_per90":86,"duel_win_pct":91,"recoveries_per90":84,"cards_per90":67,"restart_delay_seconds":50,"save_pct":0}
+    },
+    {
+      "id":"p-maignan","name":"Mike Maignan","team":"Milan","competition":"Serie A","season":"2025/26","position":"Goalkeeper","age":30,"minutes":3150,
+      "metrics":{"goals_per90":0,"xg_per90":0,"xa_per90":0.01,"key_passes_per90":0.03,"progressive_actions_per90":1.4,"duel_win_pct":88.0,"recoveries_per90":1.1,"cards_per90":0.04,"restart_delay_seconds":13.7,"save_pct":76.8},
+      "percentiles":{"goals_per90":0,"xg_per90":0,"xa_per90":68,"key_passes_per90":50,"progressive_actions_per90":78,"duel_win_pct":84,"recoveries_per90":72,"cards_per90":80,"restart_delay_seconds":35,"save_pct":91}
+    }
+  ],
+  "teams": [
+    {"id":"t-ars","name":"Arsenal FC","competition":"Premier League","season":"2025/26","matches":38,"metrics":{"goals_per_match":2.24,"xg_per_match":2.08,"shots_per_match":16.8,"possession_pct":59.4,"progressive_actions":72.1,"ppda":8.4,"cards_per_match":1.63,"restart_delay_seconds":10.2},"form":[10,11,12,10,13,12,13,15,13,14]},
+    {"id":"t-mci","name":"Manchester Blue","competition":"Premier League","season":"2025/26","matches":38,"metrics":{"goals_per_match":2.05,"xg_per_match":1.96,"shots_per_match":16.1,"possession_pct":62.7,"progressive_actions":76.8,"ppda":9.1,"cards_per_match":1.42,"restart_delay_seconds":8.7},"form":[11,13,10,12,11,13,14,12,13,12]},
+    {"id":"t-bar","name":"Barcelona","competition":"La Liga","season":"2025/26","matches":38,"metrics":{"goals_per_match":2.31,"xg_per_match":2.17,"shots_per_match":17.2,"possession_pct":64.1,"progressive_actions":79.4,"ppda":7.9,"cards_per_match":1.88,"restart_delay_seconds":8.2},"form":[12,13,13,15,12,13,15,13,14,15]},
+    {"id":"t-b04","name":"Leverkusen","competition":"Bundesliga","season":"2025/26","matches":34,"metrics":{"goals_per_match":2.12,"xg_per_match":1.91,"shots_per_match":15.5,"possession_pct":58.8,"progressive_actions":73.3,"ppda":8.1,"cards_per_match":1.71,"restart_delay_seconds":8.9},"form":[9,11,10,12,13,11,12,14,13,12]},
+    {"id":"t-int","name":"Inter","competition":"Serie A","season":"2025/26","matches":38,"metrics":{"goals_per_match":2.08,"xg_per_match":1.89,"shots_per_match":15.8,"possession_pct":57.2,"progressive_actions":69.7,"ppda":9.7,"cards_per_match":1.92,"restart_delay_seconds":11.4},"form":[12,10,13,12,14,12,11,13,12,13]},
+    {"id":"t-psg","name":"Paris","competition":"Ligue 1","season":"2025/26","matches":34,"metrics":{"goals_per_match":2.44,"xg_per_match":2.22,"shots_per_match":18.1,"possession_pct":66.2,"progressive_actions":81.6,"ppda":7.2,"cards_per_match":1.51,"restart_delay_seconds":7.8},"form":[13,15,12,15,13,14,15,15,13,15]}
+  ],
+  "managers": [
+    {"id":"m-arteta","name":"Mikel Arteta","club":"Arsenal FC","competition":"Premier League","tenure":"Dec 2019 – present","matches":245,"metrics":{"points_per_game":2.04,"xg_difference_per90":0.71,"win_pct":61.2,"sub_first_minute":62.4,"sub_goal_contributions":31,"cards_per_match":1.69,"restart_delay_seconds":10.2,"subs_while_leading_pct":42,"subs_while_drawing_pct":34}},
+    {"id":"m-guardiola","name":"Pep Guardiola","club":"Manchester Blue","competition":"Premier League","tenure":"Jul 2016 – present","matches":380,"metrics":{"points_per_game":2.31,"xg_difference_per90":0.93,"win_pct":72.4,"sub_first_minute":64.1,"sub_goal_contributions":49,"cards_per_match":1.46,"restart_delay_seconds":8.7,"subs_while_leading_pct":51,"subs_while_drawing_pct":29}},
+    {"id":"m-flick","name":"Hansi Flick","club":"Barcelona","competition":"La Liga","tenure":"Jul 2024 – present","matches":76,"metrics":{"points_per_game":2.27,"xg_difference_per90":0.88,"win_pct":69.7,"sub_first_minute":59.8,"sub_goal_contributions":18,"cards_per_match":1.91,"restart_delay_seconds":8.2,"subs_while_leading_pct":46,"subs_while_drawing_pct":31}},
+    {"id":"m-inzaghi","name":"Simone Inzaghi","club":"Inter","competition":"Serie A","tenure":"Jul 2021 – Jun 2025","matches":217,"metrics":{"points_per_game":2.16,"xg_difference_per90":0.74,"win_pct":65.4,"sub_first_minute":57.2,"sub_goal_contributions":43,"cards_per_match":1.95,"restart_delay_seconds":11.4,"subs_while_leading_pct":48,"subs_while_drawing_pct":28}}
+  ],
+  "shots": [
+    {"id":"s1","player":"Bukayo Saka","team":"Arsenal FC","minute":8,"x":0.78,"y":0.36,"xg":0.12,"result":"Saved","situation":"Open play"},
+    {"id":"s2","player":"Erling Haaland","team":"Manchester Blue","minute":14,"x":0.24,"y":0.52,"xg":0.31,"result":"Goal","situation":"Open play"},
+    {"id":"s3","player":"Martin Ødegaard","team":"Arsenal FC","minute":21,"x":0.72,"y":0.62,"xg":0.07,"result":"Blocked","situation":"Open play"},
+    {"id":"s4","player":"Phil Foden","team":"Manchester Blue","minute":33,"x":0.31,"y":0.41,"xg":0.15,"result":"Saved","situation":"Open play"},
+    {"id":"s5","player":"Bukayo Saka","team":"Arsenal FC","minute":41,"x":0.86,"y":0.49,"xg":0.44,"result":"Goal","situation":"Cutback"},
+    {"id":"s6","player":"Declan Rice","team":"Arsenal FC","minute":48,"x":0.69,"y":0.28,"xg":0.04,"result":"Missed","situation":"Set piece"},
+    {"id":"s7","player":"Erling Haaland","team":"Manchester Blue","minute":58,"x":0.18,"y":0.46,"xg":0.22,"result":"Saved","situation":"Open play"},
+    {"id":"s8","player":"Gabriel Martinelli","team":"Arsenal FC","minute":67,"x":0.82,"y":0.68,"xg":0.19,"result":"Saved","situation":"Fast break"},
+    {"id":"s9","player":"Kevin De Bruyne","team":"Manchester Blue","minute":74,"x":0.34,"y":0.73,"xg":0.06,"result":"Missed","situation":"Open play"},
+    {"id":"s10","player":"Kai Havertz","team":"Arsenal FC","minute":86,"x":0.91,"y":0.51,"xg":0.63,"result":"Goal","situation":"Open play"}
+  ],
+  "coverage": [
+    {"competition":"Premier League","season":"2025/26","standardStats":"complete","xg":"complete","events":"partial"},
+    {"competition":"La Liga","season":"2025/26","standardStats":"complete","xg":"complete","events":"partial"},
+    {"competition":"Bundesliga","season":"2025/26","standardStats":"complete","xg":"complete","events":"partial"},
+    {"competition":"Serie A","season":"2025/26","standardStats":"complete","xg":"complete","events":"partial"},
+    {"competition":"Ligue 1","season":"2025/26","standardStats":"complete","xg":"complete","events":"partial"},
+    {"competition":"Champions League","season":"2025/26","standardStats":"partial","xg":"unavailable","events":"partial"},
+    {"competition":"Premier League","season":"2014/15","standardStats":"partial","xg":"complete","events":"partial"},
+    {"competition":"La Liga","season":"2014/15","standardStats":"partial","xg":"complete","events":"partial"},
+    {"competition":"Bundesliga","season":"2014/15","standardStats":"partial","xg":"complete","events":"partial"}
+  ]
+}
