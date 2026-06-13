@@ -34,11 +34,23 @@ class UnderstatClient:
         if league not in UNDERSTAT_LEAGUES:
             raise ValueError(f"unsupported Understat league: {league}")
         provider_name = UNDERSTAT_LEAGUES[league]
-        html = self._get(f"/league/{provider_name}/{season}", f"league/{league}/{season}.html", refresh)
-        payloads = self._extract_payloads(html)
-        if len(payloads) < 3:
-            raise ValueError(f"expected league payloads for {league} {season}, found {len(payloads)}")
-        return {"matches": payloads[0], "teams": payloads[1], "players": payloads[2]}
+        payload = self._get_json(
+            f"/getLeagueData/{provider_name}/{season}",
+            f"league/{league}/{season}.json",
+            refresh,
+            referer=f"{self.base_url}/league/{provider_name}/{season}",
+        )
+        required = {"dates", "teams", "players"}
+        missing = required.difference(payload)
+        if missing:
+            raise ValueError(
+                f"league payload for {league} {season} is missing: {', '.join(sorted(missing))}"
+            )
+        return {
+            "matches": payload["dates"],
+            "teams": payload["teams"],
+            "players": payload["players"],
+        }
 
     def match_shots(self, match_id: str, refresh: bool = False) -> dict[str, Any]:
         html = self._get(f"/match/{match_id}", f"match/{match_id}.html", refresh)
@@ -57,6 +69,34 @@ class UnderstatClient:
         destination.write_text(response.text, encoding="utf-8")
         time.sleep(self.request_delay)
         return response.text
+
+    def _get_json(
+        self,
+        path: str,
+        cache_key: str,
+        refresh: bool,
+        *,
+        referer: str,
+    ) -> dict[str, Any]:
+        destination = self.cache_dir / cache_key
+        if destination.exists() and not refresh:
+            return json.loads(destination.read_text(encoding="utf-8"))
+        response = self.session.get(
+            f"{self.base_url}{path}",
+            headers={
+                "Referer": referer,
+                "X-Requested-With": "XMLHttpRequest",
+            },
+            timeout=30,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise ValueError(f"expected object payload from {path}")
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(json.dumps(payload), encoding="utf-8")
+        time.sleep(self.request_delay)
+        return payload
 
     @staticmethod
     def _extract_payloads(html: str) -> list[Any]:

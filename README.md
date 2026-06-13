@@ -104,6 +104,25 @@ artifacts without committing raw caches or large Parquet files.
 - `promote.yml` publishes a last-known-good static ZIP to the
   `football-lab-latest` release.
 
+### Monitoring
+
+Monitor live and historical ingestion runs from
+[GitHub Actions](https://github.com/aniketgiriyalkar/Soccer-Analytics/actions/workflows/ingest.yml).
+Each run exposes the provider refresh, normalization, validation, snapshot
+commit, release promotion, and artifact-upload stages without exposing secret
+values.
+
+The same status is available from the GitHub CLI:
+
+```bash
+gh run list --repo aniketgiriyalkar/Soccer-Analytics --workflow ingest.yml
+gh run watch --repo aniketgiriyalkar/Soccer-Analytics <run-id>
+gh run view --repo aniketgiriyalkar/Soccer-Analytics <run-id> --log-failed
+```
+
+Portfolio publication runs are visible at
+[Deploy portfolio to GitHub Pages](https://github.com/aniketgiriyalkar/aniketgiriyalkar.github.io/actions/workflows/deploy-pages.yml).
+
 ### GitHub Actions secrets
 
 Authenticate the GitHub CLI, then run the interactive setup:
