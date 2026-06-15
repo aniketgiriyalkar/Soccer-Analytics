@@ -1,8 +1,10 @@
 {
   "coverageRecords": 5,
-  "dataVersion": "2026.06.15-4f8c23f25d14",
-  "generatedAt": "2026-06-15T13:29:35.329716Z",
+  "dataVersion": "2026.06.15-88796b3a6e3c",
+  "generatedAt": "2026-06-15T23:31:39.886413Z",
+  "managers": 0,
   "partitions": {
+    "managers": 0,
     "matches": 5,
     "players": 5,
     "teams": 5
