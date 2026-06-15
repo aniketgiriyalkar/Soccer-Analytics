@@ -26,6 +26,14 @@ FOOTBALL_DATA_COMPETITIONS = {
     "ligue-1": "FL1",
 }
 
+API_FOOTBALL_LEAGUES = {
+    "premier-league": 39,
+    "la-liga": 140,
+    "bundesliga": 78,
+    "serie-a": 135,
+    "ligue-1": 61,
+}
+
 DISPLAY_NAMES = {
     "premier-league": "Premier League",
     "la-liga": "La Liga",

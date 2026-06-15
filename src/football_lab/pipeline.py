@@ -15,6 +15,7 @@ from typing import Any
 import polars as pl
 
 from football_lab.config import (
+    API_FOOTBALL_LEAGUES,
     CHECKPOINT_DIR,
     DISPLAY_NAMES,
     FOOTBALL_DATA_COMPETITIONS,
@@ -24,6 +25,7 @@ from football_lab.config import (
 )
 from football_lab.metrics import per_90, percentile_rank
 from football_lab.models import CoverageLevel, MetricCoverage
+from football_lab.providers.api_football import ApiFootballClient
 from football_lab.providers.football_data import FootballDataClient
 from football_lab.providers.understat import UnderstatClient
 
@@ -33,6 +35,7 @@ class Pipeline:
         self.settings = settings or Settings()
         self.understat = UnderstatClient(request_delay=self.settings.request_delay)
         self.football_data = FootballDataClient()
+        self.api_football = ApiFootballClient()
 
     def backfill(self, league: str, from_season: int, to_season: int, include_shots: bool) -> None:
         if from_season > to_season:
@@ -77,32 +80,93 @@ class Pipeline:
 
     def ingest_current_managers(self, league: str, season: int) -> bool:
         """Store current coach assignments without making the core refresh provider-dependent."""
+        rows: list[dict[str, Any]] = []
         if not self.football_data.api_key:
             print(
                 "Skipping manager refresh: FOOTBALL_DATA_API_KEY is not configured.",
                 file=sys.stderr,
             )
-            return False
+        else:
+            competition_code = FOOTBALL_DATA_COMPETITIONS[league]
+            try:
+                payload = self.football_data.competition_teams(competition_code, season)
+                rows = self._normalize_managers(league, season, payload.get("teams", []))
+            except Exception as exc:
+                print(
+                    f"Manager refresh unavailable for {league}: {type(exc).__name__}: {exc}",
+                    file=sys.stderr,
+                )
 
-        competition_code = FOOTBALL_DATA_COMPETITIONS[league]
-        try:
-            payload = self.football_data.competition_teams(competition_code, season)
-        except Exception as exc:
+        if not rows:
             print(
-                f"Manager refresh unavailable for {league}: {type(exc).__name__}: {exc}",
+                f"No current coaches returned for {league} from football-data.org.",
                 file=sys.stderr,
             )
-            return False
-
-        rows = self._normalize_managers(league, season, payload.get("teams", []))
+            rows = self._api_football_manager_rows(league, season)
         if not rows:
-            print(f"No current coaches returned for {league}.", file=sys.stderr)
+            print(f"No current coaches returned for {league} from supplemental feeds.", file=sys.stderr)
             return False
 
         destination = PARQUET_DIR / f"competition={league}" / f"season={season}"
         destination.mkdir(parents=True, exist_ok=True)
         self._write_parquet(destination / "managers.parquet", rows)
         return True
+
+    def _api_football_manager_rows(self, league: str, season: int) -> list[dict[str, Any]]:
+        if not self.api_football.api_key:
+            print("Skipping API-Football manager fallback: API_FOOTBALL_KEY is not configured.", file=sys.stderr)
+            return []
+        destination = PARQUET_DIR / f"competition={league}" / f"season={season}"
+        team_file = destination / "teams.parquet"
+        if not team_file.exists():
+            return []
+        target_teams = pl.read_parquet(team_file).to_dicts()
+        league_id = API_FOOTBALL_LEAGUES[league]
+        try:
+            teams_payload = self.api_football.league_teams(league_id, season)
+        except Exception as exc:
+            print(
+                f"API-Football teams unavailable for {league}: {type(exc).__name__}: {exc}",
+                file=sys.stderr,
+            )
+            return []
+
+        rows: list[dict[str, Any]] = []
+        for item in teams_payload.get("response", []):
+            team = item.get("team") or {}
+            api_team_id = team.get("id")
+            team_name = str(team.get("name") or "").strip()
+            if not api_team_id or not team_name:
+                continue
+            matched_team = self._find_team(target_teams, league, f"{league}-{season}", team_name)
+            if not matched_team:
+                continue
+            try:
+                coaches_payload = self.api_football.team_coaches(int(api_team_id))
+            except Exception as exc:
+                print(
+                    f"API-Football coach unavailable for {team_name}: {type(exc).__name__}: {exc}",
+                    file=sys.stderr,
+                )
+                continue
+            coach_record = self._current_api_football_coach(int(api_team_id), coaches_payload.get("response", []))
+            if not coach_record:
+                continue
+            coach, career = coach_record
+            provider_id = str(coach.get("id") or self._team_key(str(coach.get("name") or "")))
+            rows.append(
+                {
+                    "id": f"api-football-manager-{provider_id}-{league}-{season}",
+                    "provider_id": provider_id,
+                    "name": str(coach.get("name") or "").strip(),
+                    "team_name": self._canonical_team_name(matched_team["name"]),
+                    "competition_id": league,
+                    "season_id": f"{league}-{season}",
+                    "contract_start": career.get("start"),
+                    "contract_until": career.get("end"),
+                }
+            )
+        return rows
 
     def rebuild_aggregates(self) -> None:
         """Build a queryable DuckDB database from all available Parquet partitions."""
@@ -580,6 +644,28 @@ class Pipeline:
         if best and best[0] >= 0.75:
             return best[1]
         return None
+
+    @staticmethod
+    def _current_api_football_coach(
+        team_id: int, coaches: list[dict[str, Any]]
+    ) -> tuple[dict[str, Any], dict[str, Any]] | None:
+        candidates: list[tuple[str, dict[str, Any], dict[str, Any]]] = []
+        fallback: tuple[str, dict[str, Any], dict[str, Any]] | None = None
+        for coach in coaches:
+            for career in coach.get("career") or []:
+                career_team = career.get("team") or {}
+                if career_team.get("id") != team_id:
+                    continue
+                start = str(career.get("start") or "")
+                record = (start, coach, career)
+                if not career.get("end"):
+                    candidates.append(record)
+                if fallback is None or start > fallback[0]:
+                    fallback = record
+        selected = max(candidates, key=lambda item: item[0], default=fallback)
+        if not selected:
+            return None
+        return selected[1], selected[2]
 
     @staticmethod
     def _manager_tenure_label(start: str | None, until: str | None) -> str:

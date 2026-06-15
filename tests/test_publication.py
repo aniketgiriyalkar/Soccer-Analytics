@@ -155,3 +155,26 @@ def test_normalize_managers_uses_current_coach_and_canonical_team_name() -> None
     assert rows[0]["name"] == "Mikel Arteta"
     assert rows[0]["team_name"] == "Arsenal FC"
     assert Pipeline._team_key(rows[0]["team_name"]) == Pipeline._team_key("Arsenal")
+
+
+def test_current_api_football_coach_prefers_open_current_spell() -> None:
+    selected = Pipeline._current_api_football_coach(
+        42,
+        [
+            {
+                "id": 1,
+                "name": "Former Coach",
+                "career": [{"team": {"id": 42}, "start": "2021-07-01", "end": "2023-06-30"}],
+            },
+            {
+                "id": 2,
+                "name": "Current Coach",
+                "career": [{"team": {"id": 42}, "start": "2023-07-01", "end": None}],
+            },
+        ],
+    )
+
+    assert selected is not None
+    coach, career = selected
+    assert coach["name"] == "Current Coach"
+    assert career["start"] == "2023-07-01"
