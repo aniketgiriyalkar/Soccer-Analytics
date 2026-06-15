@@ -3,8 +3,12 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import subprocess
+import sys
+import unicodedata
 from datetime import UTC, datetime
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
 
@@ -13,12 +17,14 @@ import polars as pl
 from football_lab.config import (
     CHECKPOINT_DIR,
     DISPLAY_NAMES,
+    FOOTBALL_DATA_COMPETITIONS,
     PARQUET_DIR,
     PUBLIC_DATA_DIR,
     Settings,
 )
 from football_lab.metrics import per_90, percentile_rank
 from football_lab.models import CoverageLevel, MetricCoverage
+from football_lab.providers.football_data import FootballDataClient
 from football_lab.providers.understat import UnderstatClient
 
 
@@ -26,6 +32,7 @@ class Pipeline:
     def __init__(self, settings: Settings | None = None):
         self.settings = settings or Settings()
         self.understat = UnderstatClient(request_delay=self.settings.request_delay)
+        self.football_data = FootballDataClient()
 
     def backfill(self, league: str, from_season: int, to_season: int, include_shots: bool) -> None:
         if from_season > to_season:
@@ -68,6 +75,35 @@ class Pipeline:
         }
         self._write_json(CHECKPOINT_DIR / f"{season_id}.json", checkpoint)
 
+    def ingest_current_managers(self, league: str, season: int) -> bool:
+        """Store current coach assignments without making the core refresh provider-dependent."""
+        if not self.football_data.api_key:
+            print(
+                "Skipping manager refresh: FOOTBALL_DATA_API_KEY is not configured.",
+                file=sys.stderr,
+            )
+            return False
+
+        competition_code = FOOTBALL_DATA_COMPETITIONS[league]
+        try:
+            payload = self.football_data.competition_teams(competition_code, season)
+        except Exception as exc:
+            print(
+                f"Manager refresh unavailable for {league}: {type(exc).__name__}: {exc}",
+                file=sys.stderr,
+            )
+            return False
+
+        rows = self._normalize_managers(league, season, payload.get("teams", []))
+        if not rows:
+            print(f"No current coaches returned for {league}.", file=sys.stderr)
+            return False
+
+        destination = PARQUET_DIR / f"competition={league}" / f"season={season}"
+        destination.mkdir(parents=True, exist_ok=True)
+        self._write_parquet(destination / "managers.parquet", rows)
+        return True
+
     def rebuild_aggregates(self) -> None:
         """Build a queryable DuckDB database from all available Parquet partitions."""
         import duckdb
@@ -75,7 +111,7 @@ class Pipeline:
         PARQUET_DIR.mkdir(parents=True, exist_ok=True)
         database = PARQUET_DIR / "football_lab.duckdb"
         connection = duckdb.connect(str(database))
-        for entity in ("matches", "players", "teams", "shots"):
+        for entity in ("matches", "players", "teams", "managers", "shots"):
             pattern = str(PARQUET_DIR / "competition=*" / "season=*" / f"{entity}.parquet")
             files = list(PARQUET_DIR.glob(f"competition=*/season=*/{entity}.parquet"))
             if files:
@@ -107,6 +143,7 @@ class Pipeline:
         """Publish compact, validated JSON from the available Parquet partitions."""
         player_files = sorted(PARQUET_DIR.glob("competition=*/season=*/players.parquet"))
         team_files = sorted(PARQUET_DIR.glob("competition=*/season=*/teams.parquet"))
+        manager_files = sorted(PARQUET_DIR.glob("competition=*/season=*/managers.parquet"))
         match_files = sorted(PARQUET_DIR.glob("competition=*/season=*/matches.parquet"))
         if not player_files or not team_files or not match_files:
             raise RuntimeError("no normalized Parquet data is available to publish")
@@ -115,15 +152,27 @@ class Pipeline:
         template = json.loads(template_path.read_text(encoding="utf-8"))
         players_frame = pl.concat([pl.read_parquet(path) for path in player_files], how="diagonal")
         teams_frame = pl.concat([pl.read_parquet(path) for path in team_files], how="diagonal")
+        managers_frame = (
+            pl.concat([pl.read_parquet(path) for path in manager_files], how="diagonal")
+            if manager_files
+            else pl.DataFrame()
+        )
         matches_frame = pl.concat([pl.read_parquet(path) for path in match_files], how="diagonal")
 
         players = self._publish_players(players_frame)
         teams = self._publish_teams(teams_frame)
+        managers = self._publish_managers(managers_frame, teams_frame)
         coverage = self._publish_coverage(matches_frame)
         shots = self._publish_shots()
         generated_at = datetime.now(UTC)
         digest = self._content_hash(
-            {"players": players, "teams": teams, "shots": shots, "coverage": coverage}
+            {
+                "players": players,
+                "teams": teams,
+                "managers": managers,
+                "shots": shots,
+                "coverage": coverage,
+            }
         )[:12]
 
         template["manifest"].update(
@@ -140,10 +189,9 @@ class Pipeline:
         )
         template["players"] = players
         template["teams"] = teams
+        template["managers"] = managers
         template["shots"] = shots
         template["coverage"] = coverage
-        # Manager and event-level metrics require supplemental feeds; do not retain demo records.
-        template["managers"] = []
         self._write_json(template_path, template)
         self._write_json(
             PUBLIC_DATA_DIR / "snapshot-manifest.json",
@@ -153,11 +201,13 @@ class Pipeline:
                 "generatedAt": template["manifest"]["generatedAt"],
                 "players": len(players),
                 "teams": len(teams),
+                "managers": len(managers),
                 "shots": len(shots),
                 "coverageRecords": len(coverage),
                 "partitions": {
                     "players": len(player_files),
                     "teams": len(team_files),
+                    "managers": len(manager_files),
                     "matches": len(match_files),
                 },
             },
@@ -237,6 +287,18 @@ class Pipeline:
                         "xg_per_match": round(float(row.get("xg") or 0) / matches, 4)
                         if matches
                         else 0,
+                        "points_per_match": round(float(row.get("points") or 0) / matches, 4)
+                        if matches
+                        else 0,
+                        "xg_difference_per_match": round(
+                            (float(row.get("xg") or 0) - float(row.get("xga") or 0)) / matches,
+                            4,
+                        )
+                        if matches
+                        else 0,
+                        "win_pct": round(float(row.get("wins") or 0) / matches * 100, 2)
+                        if matches
+                        else 0,
                         "shots_per_match": 0,
                         "possession_pct": 0,
                         "progressive_actions": 0,
@@ -244,10 +306,62 @@ class Pipeline:
                         "cards_per_match": 0,
                         "restart_delay_seconds": 0,
                     },
-                    "form": [],
+                    "form": row.get("form") or [],
                 }
             )
         return sorted(records, key=lambda row: (row["competition"], row["name"]))
+
+    @staticmethod
+    def _publish_managers(
+        managers_frame: pl.DataFrame, teams_frame: pl.DataFrame
+    ) -> list[dict[str, Any]]:
+        if managers_frame.is_empty():
+            return []
+
+        team_rows = teams_frame.to_dicts()
+        records: list[dict[str, Any]] = []
+        for row in managers_frame.to_dicts():
+            team = Pipeline._find_team(
+                team_rows,
+                row["competition_id"],
+                row["season_id"],
+                row["team_name"],
+            )
+            if not team:
+                continue
+            matches = int(team.get("matches") or 0)
+            if not matches:
+                continue
+            xg = float(team.get("xg") or 0)
+            xga = float(team.get("xga") or 0)
+            contract_start = row.get("contract_start")
+            contract_until = row.get("contract_until")
+            tenure = Pipeline._manager_tenure_label(contract_start, contract_until)
+            records.append(
+                {
+                    "id": row["id"],
+                    "name": row["name"],
+                    "club": team["name"],
+                    "competition": DISPLAY_NAMES[row["competition_id"]],
+                    "season": Pipeline._season_label(row["season_id"]),
+                    "tenure": tenure,
+                    "matches": matches,
+                    "sampleLabel": "Club season sample under the current listed coach",
+                    "metrics": {
+                        "points_per_game": round(float(team.get("points") or 0) / matches, 4),
+                        "xg_difference_per90": round((xg - xga) / matches, 4),
+                        "win_pct": round(float(team.get("wins") or 0) / matches * 100, 2),
+                        "goals_per_match": round(float(team.get("goals") or 0) / matches, 4),
+                        "xg_per_match": round(xg / matches, 4),
+                        "ppda": round(
+                            float(team.get("ppda_att") or 0)
+                            / float(team.get("ppda_def") or 1),
+                            4,
+                        ),
+                    },
+                }
+            )
+        return sorted(records, key=lambda row: (row["competition"], row["club"]))
 
     @staticmethod
     def _publish_coverage(frame: pl.DataFrame) -> list[dict[str, Any]]:
@@ -369,6 +483,7 @@ class Pipeline:
         normalized: list[dict[str, Any]] = []
         for provider_id, team in rows.items():
             history = team.get("history", [])
+            points = [int(row.get("pts", 0)) for row in history]
             normalized.append(
                 {
                     "id": f"understat-team-{provider_id}",
@@ -382,11 +497,97 @@ class Pipeline:
                     "goals_against": sum(int(row.get("missed", 0)) for row in history),
                     "xga": sum(float(row.get("xGA", 0)) for row in history),
                     "xpts": sum(float(row.get("xpts", 0)) for row in history),
+                    "points": sum(points),
+                    "wins": sum(1 for value in points if value == 3),
+                    "form": [
+                        sum(points[max(0, index - 4) : index + 1])
+                        for index in range(len(points))
+                    ],
                     "ppda_att": sum(float(row.get("ppda", {}).get("att", 0)) for row in history),
                     "ppda_def": sum(float(row.get("ppda", {}).get("def", 0)) for row in history),
                 }
             )
         return normalized
+
+    @staticmethod
+    def _normalize_managers(
+        league: str, season: int, teams: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        for team in teams:
+            coach = team.get("coach") or {}
+            name = str(coach.get("name") or "").strip()
+            if not name:
+                continue
+            contract = coach.get("contract") or {}
+            provider_id = str(coach.get("id") or Pipeline._team_key(name))
+            rows.append(
+                {
+                    "id": f"football-data-manager-{provider_id}-{league}-{season}",
+                    "provider_id": provider_id,
+                    "name": name,
+                    "team_name": Pipeline._canonical_team_name(str(team.get("name") or "")),
+                    "competition_id": league,
+                    "season_id": f"{league}-{season}",
+                    "contract_start": contract.get("start"),
+                    "contract_until": contract.get("until"),
+                }
+            )
+        return rows
+
+    @staticmethod
+    def _canonical_team_name(value: str) -> str:
+        aliases = {
+            "north london fc": "Arsenal FC",
+            "arsenal": "Arsenal FC",
+            "fc internazionale milano": "Inter",
+            "internazionale": "Inter",
+            "inter milan": "Inter",
+            "fc bayern münchen": "Bayern Munich",
+            "fc bayern munchen": "Bayern Munich",
+            "paris saint-germain fc": "Paris Saint Germain",
+            "tottenham hotspur fc": "Tottenham",
+        }
+        return aliases.get(value.casefold().strip(), value.strip())
+
+    @staticmethod
+    def _team_key(value: str) -> str:
+        canonical = Pipeline._canonical_team_name(value).casefold()
+        ascii_name = unicodedata.normalize("NFKD", canonical).encode("ascii", "ignore").decode()
+        return re.sub(r"\b(fc|cf|ac|ssc|calcio|club|de|futbol)\b|[^a-z0-9]", "", ascii_name)
+
+    @staticmethod
+    def _find_team(
+        teams: list[dict[str, Any]], competition_id: str, season_id: str, name: str
+    ) -> dict[str, Any] | None:
+        candidates = [
+            team
+            for team in teams
+            if team["competition_id"] == competition_id and team["season_id"] == season_id
+        ]
+        target = Pipeline._team_key(name)
+        for team in candidates:
+            if Pipeline._team_key(team["name"]) == target:
+                return team
+        scored = [
+            (
+                SequenceMatcher(None, target, Pipeline._team_key(team["name"])).ratio(),
+                team,
+            )
+            for team in candidates
+        ]
+        best = max(scored, key=lambda item: item[0], default=None)
+        if best and best[0] >= 0.75:
+            return best[1]
+        return None
+
+    @staticmethod
+    def _manager_tenure_label(start: str | None, until: str | None) -> str:
+        if start and until:
+            return f"Contract {str(start)[:10]} to {str(until)[:10]}"
+        if start:
+            return f"Current since {str(start)[:10]}"
+        return "Current coach"
 
     @staticmethod
     def _normalize_shots(match: dict[str, Any], payload: dict[str, Any]) -> list[dict[str, Any]]:

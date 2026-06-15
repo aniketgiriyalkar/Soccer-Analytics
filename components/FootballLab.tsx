@@ -53,10 +53,9 @@ export function FootballLab({ initialData }: { initialData: FootballLabData }) {
       teams: initialData.teams.filter(
         (team) => competitionMatches(team.competition) && team.season === season,
       ),
-      managers:
-        season === "2025/26"
-          ? initialData.managers.filter((manager) => competitionMatches(manager.competition))
-          : [],
+      managers: initialData.managers.filter(
+        (manager) => competitionMatches(manager.competition) && manager.season === season,
+      ),
       shots:
         season === "2025/26" &&
         (competition === "All competitions" || competition === "Premier League")
@@ -128,7 +127,7 @@ export function FootballLab({ initialData }: { initialData: FootballLabData }) {
             </button>
           ))}
         </nav>
-        <div className="filters">
+        {!["teams", "managers", "architecture"].includes(view) && <div className="filters">
           <label>
             <span>Competition</span>
             <select value={competition} onChange={(event) => setCompetition(event.target.value)}>
@@ -145,14 +144,14 @@ export function FootballLab({ initialData }: { initialData: FootballLabData }) {
               ))}
             </select>
           </label>
-        </div>
+        </div>}
       </div>
 
       <section id="analysis" className="analysis-shell">
         {view === "overview" && <Overview data={visibleData} />}
         {view === "players" && <PlayerCompare data={visibleData} />}
-        {view === "teams" && <TeamCompare data={visibleData} />}
-        {view === "managers" && <ManagerCompare data={visibleData} />}
+        {view === "teams" && <TeamCompare data={initialData} />}
+        {view === "managers" && <ManagerCompare data={initialData} />}
         {view === "match" && <MatchCentre shots={visibleData.shots} />}
         {view === "coverage" && <CoveragePanel data={visibleData} />}
         {view === "architecture" && <ArchitecturePanel data={initialData} />}
@@ -516,19 +515,29 @@ function PlayerCompare({ data }: { data: FootballLabData }) {
 }
 
 function TeamCompare({ data }: { data: FootballLabData }) {
-  const [teamIds, setTeamIds] = useState(data.teams.slice(0, 3).map((team) => team.id));
-  const selected = data.teams.filter((team) => teamIds.includes(team.id));
+  const competitions = ["All competitions", ...new Set(data.teams.map((team) => team.competition))];
+  const seasons = [...new Set(data.teams.map((team) => team.season))].sort().reverse();
+  const [competition, setCompetition] = useState("All competitions");
+  const [season, setSeason] = useState(seasons[0] ?? "");
+  const teams = data.teams.filter(
+    (team) =>
+      team.season === season &&
+      (competition === "All competitions" || team.competition === competition),
+  );
+  const [teamIds, setTeamIds] = useState<string[]>([]);
+  const validTeamIds = teamIds.filter((id) => teams.some((team) => team.id === id));
+  const selected = teams.filter((team) => validTeamIds.includes(team.id));
+  const displayed = selected.length ? selected : teams.slice(0, 3);
   const metrics = [
+    ["points_per_match", "Points / match"],
     ["goals_per_match", "Goals / match"],
     ["xg_per_match", "xG / match"],
-    ["shots_per_match", "Shots / match"],
-    ["possession_pct", "Possession %"],
-    ["progressive_actions", "Progressive actions"],
+    ["xg_difference_per_match", "xG difference / match"],
+    ["win_pct", "Win rate"],
     ["ppda", "PPDA"],
-    ["cards_per_match", "Cards / match"],
-    ["restart_delay_seconds", "Restart delay"],
   ];
-  if (!data.teams.length) {
+
+  if (!teams.length) {
     return <EmptyDataset title="Team comparisons are awaiting an ingested dataset." />;
   }
 
@@ -536,22 +545,31 @@ function TeamCompare({ data }: { data: FootballLabData }) {
     <>
       <SectionHeading
         eyebrow="Team intelligence"
-        title="Style, output, control, and conduct."
-        copy="Compare attacking and defensive output alongside possession, progression, discipline, and neutral game-management indicators."
+        title="Style, output, and control."
+        copy="This section has its own competition and season scope. Compare observed results, expected performance, scoring, and defensive pressure without depending on the player view."
+      />
+      <SectionFilters
+        competition={competition}
+        competitions={competitions}
+        season={season}
+        seasons={seasons}
+        setCompetition={setCompetition}
+        setSeason={setSeason}
       />
       <div className="chip-row teams">
-        {data.teams.map((team) => (
+        {teams.map((team) => (
           <button
-            className={teamIds.includes(team.id) ? "active" : ""}
+            className={displayed.some((item) => item.id === team.id) ? "active" : ""}
             key={team.id}
             onClick={() =>
-              setTeamIds((current) =>
-                current.includes(team.id)
+              setTeamIds(() => {
+                const current = displayed.map((item) => item.id);
+                return current.includes(team.id)
                   ? current.filter((id) => id !== team.id)
                   : current.length < 4
                     ? [...current, team.id]
-                    : current,
-              )
+                    : current;
+              })
             }
             type="button"
           >
@@ -562,18 +580,18 @@ function TeamCompare({ data }: { data: FootballLabData }) {
       <div className="dashboard-grid">
         <article className="panel span-7">
           <PanelTitle title="Team style map" note="Chance creation vs defensive disruption" />
-          <TeamScatter teams={selected} />
+          <TeamScatter teams={displayed} />
         </article>
         <article className="panel span-5">
           <PanelTitle title="Recent trajectory" note="Rolling five-match points" />
-          <LineChart teams={selected} />
+          <LineChart teams={displayed} />
         </article>
         <article className="panel span-12 table-panel">
           <PanelTitle
             title="Team comparison"
-            note="Restart delay is descriptive context, not proof of intent"
+            note="Only provider-backed metrics are shown"
           />
-          <TeamTable teams={selected} metrics={metrics} />
+          <TeamTable teams={displayed} metrics={metrics} />
         </article>
       </div>
     </>
@@ -581,41 +599,75 @@ function TeamCompare({ data }: { data: FootballLabData }) {
 }
 
 function ManagerCompare({ data }: { data: FootballLabData }) {
-  const [selected, setSelected] = useState(data.managers.slice(0, 3).map((manager) => manager.id));
-  const managers = data.managers.filter((manager) => selected.includes(manager.id));
+  const competitions = [
+    "All competitions",
+    ...new Set(data.managers.map((manager) => manager.competition)),
+  ];
+  const seasons = [...new Set(data.managers.map((manager) => manager.season))].sort().reverse();
+  const [competition, setCompetition] = useState("All competitions");
+  const [season, setSeason] = useState(seasons[0] ?? "");
+  const availableManagers = data.managers.filter(
+    (manager) =>
+      manager.season === season &&
+      (competition === "All competitions" || manager.competition === competition),
+  );
+  const [selected, setSelected] = useState<string[]>([]);
+  const validSelected = selected.filter((id) =>
+    availableManagers.some((manager) => manager.id === id),
+  );
+  const managers = availableManagers.filter((manager) => validSelected.includes(manager.id));
+  const displayed = managers.length ? managers : availableManagers.slice(0, 3);
   const metrics = [
     ["points_per_game", "Points / game"],
-    ["xg_difference_per90", "xG difference / 90"],
+    ["xg_difference_per90", "xG difference / match"],
     ["win_pct", "Win rate"],
-    ["sub_first_minute", "First substitution"],
-    ["sub_goal_contributions", "Substitute goal contributions"],
-    ["cards_per_match", "Team cards / match"],
-    ["restart_delay_seconds", "Restart delay"],
+    ["goals_per_match", "Goals / match"],
+    ["xg_per_match", "xG / match"],
+    ["ppda", "PPDA"],
   ];
-  if (!data.managers.length) {
-    return <EmptyDataset title="Manager tenures are not available for this selection." />;
+
+  if (!availableManagers.length) {
+    return (
+      <>
+        <SectionHeading
+          eyebrow="Manager analysis"
+          title="Current-coach data is awaiting its first validated refresh."
+          copy="The Teams section remains available independently. Manager ingestion is supplemental and cannot block the daily player, team, and xG snapshot."
+        />
+        <EmptyDataset title="No validated current-coach records are published yet." />
+      </>
+    );
   }
 
   return (
     <>
       <SectionHeading
-        eyebrow="Tenure analysis"
-        title="Compare decisions in context."
-        copy="Manager records are segmented by club tenure and normalized by match count. Team outcomes are not treated as proof of individual causation."
+        eyebrow="Current-coach analysis"
+        title="Compare club performance in context."
+        copy="This section runs on its own coverage. Current coach assignments are joined to club-season team outcomes; those outcomes are descriptive and are not attributed solely to the coach."
+      />
+      <SectionFilters
+        competition={competition}
+        competitions={competitions}
+        season={season}
+        seasons={seasons}
+        setCompetition={setCompetition}
+        setSeason={setSeason}
       />
       <div className="manager-cards">
-        {data.managers.map((manager) => (
+        {availableManagers.map((manager) => (
           <button
-            className={selected.includes(manager.id) ? "selected" : ""}
+            className={displayed.some((item) => item.id === manager.id) ? "selected" : ""}
             key={manager.id}
             onClick={() =>
-              setSelected((current) =>
-                current.includes(manager.id)
+              setSelected(() => {
+                const current = displayed.map((item) => item.id);
+                return current.includes(manager.id)
                   ? current.filter((id) => id !== manager.id)
                   : current.length < 4
                     ? [...current, manager.id]
-                    : current,
-              )
+                    : current;
+              })
             }
             type="button"
           >
@@ -628,19 +680,52 @@ function ManagerCompare({ data }: { data: FootballLabData }) {
       </div>
       <div className="dashboard-grid">
         <article className="panel span-7">
-          <PanelTitle title="Tenure fingerprint" note="Output, control, discipline, substitutions" />
-          <ManagerBars managers={managers} metrics={metrics} />
+          <PanelTitle title="Current-coach club profile" note="Results, xG, scoring, and pressure" />
+          <ManagerBars managers={displayed} metrics={metrics} />
         </article>
         <article className="panel span-5">
-          <PanelTitle title="Match-state management" note="Share of substitutions by state" />
-          <DonutChart managers={managers} />
+          <PanelTitle title="Sample context" note="Current listed coach and club-season scope" />
+          <ManagerSample managers={displayed} />
         </article>
         <article className="panel span-12 table-panel">
-          <PanelTitle title="Manager comparison" note="Minimum sample: 20 matches" />
-          <ManagerTable managers={managers} metrics={metrics} />
+          <PanelTitle title="Manager comparison" note="Club-season sample; causal claims excluded" />
+          <ManagerTable managers={displayed} metrics={metrics} />
         </article>
       </div>
     </>
+  );
+}
+
+function SectionFilters({
+  competition,
+  competitions,
+  season,
+  seasons,
+  setCompetition,
+  setSeason,
+}: {
+  competition: string;
+  competitions: string[];
+  season: string;
+  seasons: string[];
+  setCompetition: (value: string) => void;
+  setSeason: (value: string) => void;
+}) {
+  return (
+    <div className="section-filters filters">
+      <label>
+        <span>Competition</span>
+        <select value={competition} onChange={(event) => setCompetition(event.target.value)}>
+          {competitions.map((item) => <option key={item}>{item}</option>)}
+        </select>
+      </label>
+      <label>
+        <span>Season</span>
+        <select value={season} onChange={(event) => setSeason(event.target.value)}>
+          {seasons.map((item) => <option key={item}>{item}</option>)}
+        </select>
+      </label>
+    </div>
   );
 }
 
@@ -1044,10 +1129,10 @@ function TeamScatter({ teams }: { teams: Team[] }) {
   const pseudoPlayers = teams.map((team) => ({
     id: team.id, name: team.name, team: team.name, competition: team.competition,
     season: team.season, position: "Team", age: 0, minutes: 0,
-    metrics: { xg: team.metrics.xg_per_match, xa: team.metrics.progressive_actions / 40 },
+    metrics: { xg: team.metrics.xg_per_match, xa: team.metrics.xg_difference_per_match },
     percentiles: {},
   }));
-  return <ScatterPlot players={pseudoPlayers} xKey="xg" xLabel="xG / match" yKey="xa" yLabel="Progression index" />;
+  return <ScatterPlot players={pseudoPlayers} xKey="xg" xLabel="xG / match" yKey="xa" yLabel="xG difference / match" />;
 }
 
 function LineChart({ teams }: { teams: Team[] }) {
@@ -1079,27 +1164,26 @@ function ManagerBars({ managers, metrics }: { managers: Manager[]; metrics: stri
     <div className="manager-bars">
       {metrics.slice(0, 5).map(([key, label]) => {
         const max = Math.max(...managers.map((manager) => manager.metrics[key] ?? 0), 1);
-        return <div key={key}><strong>{label}</strong>{managers.map((manager, index) => <div className="bar-row" key={manager.id}><span>{manager.name}</span><div><i style={{ background: PLAYER_COLORS[index], width: `${Math.max(4, (manager.metrics[key] / max) * 100)}%` }} /></div><b>{manager.metrics[key].toFixed(key.includes("pct") ? 1 : 2)}</b></div>)}</div>;
+        return <div key={key}><strong>{label}</strong>{managers.map((manager, index) => {
+          const value = manager.metrics[key];
+          return <div className="bar-row" key={manager.id}><span>{manager.name}</span><div><i style={{ background: PLAYER_COLORS[index], width: `${Math.max(4, ((value ?? 0) / max) * 100)}%` }} /></div><b>{value?.toFixed(key.includes("pct") ? 1 : 2) ?? "—"}</b></div>;
+        })}</div>;
       })}
     </div>
   );
 }
 
-function DonutChart({ managers }: { managers: Manager[] }) {
+function ManagerSample({ managers }: { managers: Manager[] }) {
   const manager = managers[0];
   if (!manager) return <p className="empty-state">Select a manager.</p>;
-  const leading = manager.metrics.subs_while_leading_pct;
-  const drawing = manager.metrics.subs_while_drawing_pct;
-  const trailing = Math.max(0, 100 - leading - drawing);
-  const gradient = `conic-gradient(#63e6be 0 ${leading}%, #8c7cff ${leading}% ${leading + drawing}%, #ff786d ${leading + drawing}% 100%)`;
   return (
-    <div className="donut-wrap">
-      <div className="donut" style={{ background: gradient }}><span>{manager.matches}<small>matches</small></span></div>
-      <div className="donut-legend">
+    <div className="manager-sample">
+      <strong className="sample-count">{manager.matches}<small>team matches</small></strong>
+      <div>
         <strong>{manager.name}</strong>
-        <span><i style={{ background: "#63e6be" }} /> Leading {leading.toFixed(0)}%</span>
-        <span><i style={{ background: "#8c7cff" }} /> Drawing {drawing.toFixed(0)}%</span>
-        <span><i style={{ background: "#ff786d" }} /> Trailing {trailing.toFixed(0)}%</span>
+        <p>{manager.club} · {manager.competition} · {manager.season}</p>
+        <p>{manager.tenure}</p>
+        <small>{manager.sampleLabel}</small>
       </div>
     </div>
   );

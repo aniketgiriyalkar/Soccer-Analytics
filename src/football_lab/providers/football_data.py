@@ -35,6 +35,13 @@ class FootballDataClient:
             f"{competition_code}/{season}/standings.json",
         )
 
+    def competition_teams(self, competition_code: str, season: int) -> dict[str, Any]:
+        return self._get(
+            f"/competitions/{competition_code}/teams",
+            {"season": season},
+            f"{competition_code}/{season}/teams.json",
+        )
+
     def _get(self, path: str, params: dict[str, Any], cache_key: str) -> dict[str, Any]:
         if not self.api_key:
             raise RuntimeError("FOOTBALL_DATA_API_KEY is required for supplemental ingestion")

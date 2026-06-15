@@ -62,11 +62,29 @@ def test_publish_frontend_builds_compact_provider_snapshot(
                 "matches": 38,
                 "goals": 80,
                 "xg": 76.5,
+                "xga": 35.5,
+                "points": 89,
+                "wins": 28,
+                "form": [10, 12, 13],
                 "ppda_att": 420,
                 "ppda_def": 52,
             }
         ]
     ).write_parquet(partition / "teams.parquet")
+    pl.DataFrame(
+        [
+            {
+                "id": "manager-1",
+                "provider_id": "1",
+                "name": "Manager One",
+                "team_name": "North London FC",
+                "competition_id": "premier-league",
+                "season_id": "premier-league-2024",
+                "contract_start": "2023-07-01",
+                "contract_until": "2027-06-30",
+            }
+        ]
+    ).write_parquet(partition / "managers.parquet")
     pl.DataFrame(
         [
             {
@@ -107,6 +125,33 @@ def test_publish_frontend_builds_compact_provider_snapshot(
     assert published["players"][0]["team"] == "Arsenal FC"
     assert published["players"][0]["metrics"]["goals_per90"] == 1
     assert published["teams"][0]["metrics"]["xg_per_match"] > 2
-    assert published["managers"] == []
+    assert published["teams"][0]["metrics"]["points_per_match"] > 2
+    assert published["teams"][0]["form"] == [10, 12, 13]
+    assert published["managers"][0]["club"] == "Arsenal FC"
+    assert published["managers"][0]["season"] == "2024/25"
+    assert published["managers"][0]["metrics"]["win_pct"] > 70
     assert snapshot["players"] == 1
     assert snapshot["teams"] == 1
+    assert snapshot["managers"] == 1
+
+
+def test_normalize_managers_uses_current_coach_and_canonical_team_name() -> None:
+    rows = Pipeline._normalize_managers(
+        "premier-league",
+        2025,
+        [
+            {
+                "id": 57,
+                "name": "North London FC",
+                "coach": {
+                    "id": 11616,
+                    "name": "Mikel Arteta",
+                    "contract": {"start": "2019-12-22", "until": "2027-06-30"},
+                },
+            }
+        ],
+    )
+
+    assert rows[0]["name"] == "Mikel Arteta"
+    assert rows[0]["team_name"] == "Arsenal FC"
+    assert Pipeline._team_key(rows[0]["team_name"]) == Pipeline._team_key("Arsenal")

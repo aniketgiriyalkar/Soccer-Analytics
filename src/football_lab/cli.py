@@ -46,6 +46,7 @@ def main() -> None:
             # Shot-level refreshes remain an explicit/manual operation to keep daily
             # source traffic bounded.
             pipeline.ingest_understat_season(league, current_start_year, include_shots=False)
+            pipeline.ingest_current_managers(league, current_start_year)
     elif args.command == "rebuild-aggregates":
         pipeline.rebuild_aggregates()
     elif args.command == "audit-coverage":

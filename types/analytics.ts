@@ -37,8 +37,10 @@ export type Manager = {
   name: string;
   club: string;
   competition: string;
+  season: string;
   tenure: string;
   matches: number;
+  sampleLabel: string;
   metrics: Record<string, number>;
 };
 

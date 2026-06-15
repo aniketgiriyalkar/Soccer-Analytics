@@ -18,6 +18,14 @@ UNDERSTAT_LEAGUES = {
     "ligue-1": "Ligue_1",
 }
 
+FOOTBALL_DATA_COMPETITIONS = {
+    "premier-league": "PL",
+    "la-liga": "PD",
+    "bundesliga": "BL1",
+    "serie-a": "SA",
+    "ligue-1": "FL1",
+}
+
 DISPLAY_NAMES = {
     "premier-league": "Premier League",
     "la-liga": "La Liga",
